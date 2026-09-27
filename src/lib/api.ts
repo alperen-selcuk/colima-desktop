@@ -8,15 +8,21 @@ import type {
   HostKubeconfigHealth,
   Image,
   K3sVersionsResponse,
+  K8sConfigMap,
   K8sDeployment,
+  K8sIngress,
   K8sKind,
+  K8sNamespacedKind,
   K8sNode,
   K8sPod,
+  K8sSecret,
   K8sService,
   LogEnd,
   LogEvent,
   LogTarget,
+  NodeMetrics,
   OpLog,
+  PodMetrics,
   Profile,
   ProfileConfig,
   ConfigIssue,
@@ -25,6 +31,7 @@ import type {
   PruneTarget,
   RepairResult,
   RunOptions,
+  SecretValue,
   StartOptions,
   TerminalExit,
   TerminalOutput,
@@ -165,6 +172,24 @@ async function mockInvoke<T>(
       return undefined as unknown as T;
     case "k8s_yaml":
       return `apiVersion: v1\nkind: ${args?.kind}\nmetadata:\n  name: ${args?.name}\n` as unknown as T;
+    case "k8s_configmaps":
+      return mock.mockK8sConfigMaps as unknown as T;
+    case "k8s_secrets":
+      return mock.mockK8sSecrets as unknown as T;
+    case "k8s_secret_value":
+      return mock.mockK8sSecretValue(args?.name as string, args?.key as string) as unknown as T;
+    case "k8s_ingresses":
+      return mock.mockK8sIngresses as unknown as T;
+    case "k8s_delete":
+      return undefined as unknown as T;
+    case "k8s_edit_yaml":
+      return mock.mockK8sEditYaml(args?.kind as string, args?.namespace as string | null, args?.name as string) as unknown as T;
+    case "k8s_apply_yaml":
+      return mock.mockK8sApplyYaml(args?.dryRun as boolean) as unknown as T;
+    case "k8s_pod_metrics":
+      return mock.mockPodMetrics as unknown as T;
+    case "k8s_node_metrics":
+      return mock.mockNodeMetrics as unknown as T;
     case "host_kubeconfig_health":
       return mock.mockHostKubeconfigHealth(profile) as unknown as T;
     case "repair_host_kubeconfig":
@@ -413,6 +438,79 @@ export function k8sYaml(
   name: string,
 ): Promise<string> {
   return invoke<string>("k8s_yaml", { profile, kind, namespace, name });
+}
+
+// ---- §6.6: ConfigMaps, Secrets, Ingresses, delete/edit, resource usage ----
+
+export function k8sConfigMaps(profile: string, namespace: string | null): Promise<K8sConfigMap[]> {
+  return invoke<K8sConfigMap[]>("k8s_configmaps", { profile, namespace });
+}
+
+export function k8sSecrets(profile: string, namespace: string | null): Promise<K8sSecret[]> {
+  return invoke<K8sSecret[]>("k8s_secrets", { profile, namespace });
+}
+
+/** Explicit reveal of ONE secret key's value (never fetched in bulk). */
+export function k8sSecretValue(
+  profile: string,
+  namespace: string,
+  name: string,
+  key: string,
+): Promise<SecretValue> {
+  return invoke<SecretValue>("k8s_secret_value", { profile, namespace, name, key });
+}
+
+export function k8sIngresses(profile: string, namespace: string | null): Promise<K8sIngress[]> {
+  return invoke<K8sIngress[]>("k8s_ingresses", { profile, namespace });
+}
+
+/** Delete any namespaced object (pod/deployment/service/configmap/secret/
+ * ingress). The backend rejects `kind: "node"` — nodes are read-only. */
+export function k8sDelete(
+  profile: string,
+  kind: K8sNamespacedKind,
+  namespace: string | null,
+  name: string,
+): Promise<void> {
+  return invoke<void>("k8s_delete", { profile, kind, namespace, name });
+}
+
+/** Fetches the object's YAML for the Edit dialog: `managedFields`/`status`
+ * stripped, `resourceVersion` kept so a conflicting concurrent edit can be
+ * detected on save. */
+export function k8sEditYaml(
+  profile: string,
+  kind: K8sNamespacedKind,
+  namespace: string | null,
+  name: string,
+): Promise<string> {
+  return invoke<string>("k8s_edit_yaml", { profile, kind, namespace, name });
+}
+
+/** "Validate" (dryRun: true) or "Save" (dryRun: false) in the Edit dialog.
+ * Content is sent as-is (kubectl reads it on stdin server-side — never
+ * written to a temp file, since it may contain secret values). Returns the
+ * kubectl output shown inline on success. */
+export function k8sApplyYaml(
+  profile: string,
+  kind: K8sNamespacedKind,
+  namespace: string | null,
+  name: string,
+  content: string,
+  dryRun: boolean,
+): Promise<string> {
+  return invoke<string>("k8s_apply_yaml", { profile, kind, namespace, name, content, dryRun });
+}
+
+/** `available: false` (with `reason`) when metrics-server isn't installed or
+ * ready — callers should show a subtle note and render "—" in usage columns
+ * rather than treating it as a hard error. */
+export function k8sPodMetrics(profile: string, namespace: string | null): Promise<PodMetrics> {
+  return invoke<PodMetrics>("k8s_pod_metrics", { profile, namespace });
+}
+
+export function k8sNodeMetrics(profile: string): Promise<NodeMetrics> {
+  return invoke<NodeMetrics>("k8s_node_metrics", { profile });
 }
 
 /** Terminal kubectl health (§2.1a): compares the user's real `~/.kube/config`

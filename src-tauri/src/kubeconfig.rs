@@ -299,15 +299,26 @@ async fn force_refresh(app: &AppHandle, profile: &str) -> Result<PathBuf, String
 
 /// Build a clean `kubectl` child command: `--kubeconfig <file> --context
 /// <ctx>` prepended to `args`, `KUBECONFIG` removed from the env so nothing
-/// can override the explicit flag.
-fn build_kubectl_command(kubeconfig_path: &Path, ctx: &str, args: &[String]) -> TokioCommand {
+/// can override the explicit flag. `stdin_mode` lets callers that need to
+/// pipe content in (e.g. `kubectl replace -f -`) request a piped stdin
+/// instead of the default `Stdio::null()`.
+fn build_kubectl_command_with_stdin(
+    kubeconfig_path: &Path,
+    ctx: &str,
+    args: &[String],
+    stdin_mode: Stdio,
+) -> TokioCommand {
     let mut cmd = TokioCommand::new("kubectl");
     cmd.arg("--kubeconfig").arg(kubeconfig_path);
     cmd.arg("--context").arg(ctx);
     cmd.args(args);
     cmd.env_remove("KUBECONFIG");
-    cmd.stdin(Stdio::null());
+    cmd.stdin(stdin_mode);
     cmd
+}
+
+fn build_kubectl_command(kubeconfig_path: &Path, ctx: &str, args: &[String]) -> TokioCommand {
+    build_kubectl_command_with_stdin(kubeconfig_path, ctx, args, Stdio::null())
 }
 
 pub(crate) async fn run_kubectl_once(kubeconfig_path: &Path, ctx: &str, args: &[String]) -> Result<String, String> {
@@ -335,6 +346,54 @@ pub(crate) async fn run_kubectl_once(kubeconfig_path: &Path, ctx: &str, args: &[
     }
 }
 
+/// Same as [`run_kubectl_once`] but writes `stdin_content` to the child's
+/// stdin instead of closing it. Used for `kubectl ... -f -` calls (e.g.
+/// `k8s_apply_yaml`) so secret-bearing YAML never touches disk as a temp
+/// file — it's piped directly into the kubectl child process.
+pub(crate) async fn run_kubectl_once_with_stdin(
+    kubeconfig_path: &Path,
+    ctx: &str,
+    args: &[String],
+    stdin_content: &str,
+) -> Result<String, String> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut child = build_kubectl_command_with_stdin(kubeconfig_path, ctx, args, Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "kubectl not found in PATH".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
+
+    // Write stdin then drop it (closing the pipe) before awaiting output, so
+    // kubectl sees EOF and doesn't block waiting for more input.
+    if let Some(mut stdin) = child.stdin.take() {
+        let content = stdin_content.to_string();
+        stdin
+            .write_all(content.as_bytes())
+            .await
+            .map_err(|e| format!("failed to write to kubectl stdin: {e}"))?;
+        drop(stdin);
+    }
+
+    let output = child.wait_with_output().await.map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if output.status.success() {
+        Ok(stdout.trim().to_string())
+    } else {
+        let raw = if !stderr.trim().is_empty() { stderr } else { stdout };
+        Err(strip_kubectl_noise(raw.trim()))
+    }
+}
+
 /// The single helper every kubectl call in the app routes through (§2.1a):
 /// ensures the app-managed kubeconfig for `profile` is fresh, runs `kubectl
 /// --kubeconfig <file> --context <ctx> <args...>` with `KUBECONFIG` removed
@@ -349,6 +408,28 @@ pub async fn kubectl(app: &AppHandle, profile: &str, args: &[String]) -> Result<
         Err(e) if is_auth_error(&e) => {
             let refreshed_path = force_refresh(app, profile).await?;
             run_kubectl_once(&refreshed_path, &ctx, args).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Same as [`kubectl`] but pipes `stdin_content` into the child's stdin
+/// (never writes it to a temp file), for calls like `kubectl replace -f -`.
+/// Keeps the same fresh-kubeconfig + retry-once-on-auth-error semantics.
+pub async fn kubectl_with_stdin(
+    app: &AppHandle,
+    profile: &str,
+    args: &[String],
+    stdin_content: &str,
+) -> Result<String, String> {
+    let ctx = kube_context(profile);
+    let path = ensure_fresh(app, profile).await?;
+
+    match run_kubectl_once_with_stdin(&path, &ctx, args, stdin_content).await {
+        Ok(out) => Ok(out),
+        Err(e) if is_auth_error(&e) => {
+            let refreshed_path = force_refresh(app, profile).await?;
+            run_kubectl_once_with_stdin(&refreshed_path, &ctx, args, stdin_content).await
         }
         Err(e) => Err(e),
     }

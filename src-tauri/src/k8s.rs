@@ -3,7 +3,8 @@
 //! `current-context`.
 
 use crate::kubeconfig;
-use crate::validate::validate_profile_name;
+use crate::quantity;
+use crate::validate::{validate_k8s_arg, validate_profile_name};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::AppHandle;
@@ -30,6 +31,11 @@ pub struct K8sPod {
     pub node: Option<String>,
     pub pod_ip: Option<String>,
     pub containers: Vec<String>,
+    // §6.6: sum over regular containers; null when no container sets it.
+    pub cpu_request_milli: Option<i64>,
+    pub cpu_limit_milli: Option<i64>,
+    pub mem_request_bytes: Option<i64>,
+    pub mem_limit_bytes: Option<i64>,
 }
 
 /// Derive the `kubectl get pods`-style display status for one pod JSON
@@ -127,6 +133,8 @@ fn pod_from_json(pod: &Value) -> K8sPod {
         })
         .unwrap_or_default();
 
+    let resources = quantity::pod_resource_summary(pod);
+
     K8sPod {
         name: pod["metadata"]["name"].as_str().unwrap_or_default().to_string(),
         namespace: pod["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
@@ -141,6 +149,10 @@ fn pod_from_json(pod: &Value) -> K8sPod {
         node: pod["spec"]["nodeName"].as_str().map(str::to_string),
         pod_ip: pod["status"]["podIP"].as_str().map(str::to_string),
         containers,
+        cpu_request_milli: resources.cpu_request_milli,
+        cpu_limit_milli: resources.cpu_limit_milli,
+        mem_request_bytes: resources.mem_request_bytes,
+        mem_limit_bytes: resources.mem_limit_bytes,
     }
 }
 
@@ -281,6 +293,8 @@ pub struct K8sNode {
     pub cpu: String,
     pub memory: String,
     pub created_at: String,
+    pub cpu_allocatable_milli: Option<i64>,
+    pub mem_allocatable_bytes: Option<i64>,
 }
 
 /// Roles from `node-role.kubernetes.io/<role>` label keys, joined with
@@ -326,6 +340,8 @@ fn node_from_json(node: &Value) -> K8sNode {
             .map(str::to_string)
     });
 
+    let (cpu_allocatable_milli, mem_allocatable_bytes) = quantity::node_allocatable(node);
+
     K8sNode {
         name: node["metadata"]["name"].as_str().unwrap_or_default().to_string(),
         status: derive_node_status(node),
@@ -348,6 +364,8 @@ fn node_from_json(node: &Value) -> K8sNode {
             .as_str()
             .unwrap_or_default()
             .to_string(),
+        cpu_allocatable_milli,
+        mem_allocatable_bytes,
     }
 }
 
@@ -463,13 +481,34 @@ pub async fn k8s_nodes(app: AppHandle, profile: String) -> Result<Vec<K8sNode>, 
     nodes_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }).await
 }
 
+/// The kind whitelist (§6.6): namespaced `pod | deployment | service |
+/// configmap | secret | ingress`, cluster-scoped `node` (read-only — no
+/// delete/edit/apply). Validated in the backend before any kubectl call.
 fn validate_kind(kind: &str) -> Result<&'static str, String> {
     match kind {
         "pod" => Ok("pod"),
         "deployment" => Ok("deployment"),
         "service" => Ok("service"),
+        "configmap" => Ok("configmap"),
+        "secret" => Ok("secret"),
+        "ingress" => Ok("ingress"),
         "node" => Ok("node"),
         other => Err(format!("invalid kind: {other}")),
+    }
+}
+
+/// Whether `kind` is namespace-scoped (all whitelisted kinds except `node`).
+fn kind_is_namespaced(kind: &str) -> bool {
+    kind != "node"
+}
+
+/// Reject mutating operations (delete/edit/apply) against the read-only
+/// `node` kind (§6.6: "node is read-only: reject delete/edit/apply").
+fn reject_node_mutation(kind: &str) -> Result<(), String> {
+    if kind == "node" {
+        Err("nodes are read-only: delete/edit/apply is not supported".to_string())
+    } else {
+        Ok(())
     }
 }
 
@@ -483,6 +522,10 @@ pub async fn k8s_describe(
 ) -> Result<String, String> {
     validate_profile_name(&profile)?;
     let kind = validate_kind(&kind)?;
+    validate_k8s_arg("name", &name)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
     let mut args = vec!["describe".to_string(), kind.to_string(), name];
     if let Some(ns) = &namespace {
         args.push("-n".into());
@@ -543,6 +586,10 @@ pub async fn k8s_yaml(
 ) -> Result<String, String> {
     validate_profile_name(&profile)?;
     let kind = validate_kind(&kind)?;
+    validate_k8s_arg("name", &name)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
     let mut args = vec!["get".to_string(), kind.to_string(), name];
     if let Some(ns) = &namespace {
         args.push("-n".into());
@@ -550,7 +597,506 @@ pub async fn k8s_yaml(
     }
     args.push("-o".into());
     args.push("yaml".into());
-    kubeconfig::kubectl(&app, &profile, &args).await
+    let yaml = kubeconfig::kubectl(&app, &profile, &args).await?;
+    if kind == "secret" {
+        Ok(quantity::mask_secret_yaml(&yaml))
+    } else {
+        Ok(yaml)
+    }
+}
+
+// ---------- ConfigMaps ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sConfigMap {
+    pub name: String,
+    pub namespace: String,
+    pub keys: Vec<String>,
+    pub created_at: String,
+}
+
+fn sorted_keys_of(obj: &Value, field: &str) -> Vec<String> {
+    obj[field].as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+}
+
+fn configmap_from_json(cm: &Value) -> K8sConfigMap {
+    let mut keys = sorted_keys_of(cm, "data");
+    keys.extend(sorted_keys_of(cm, "binaryData"));
+    keys.sort();
+    keys.dedup();
+
+    K8sConfigMap {
+        name: cm["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+        namespace: cm["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+        keys,
+        created_at: cm["metadata"]["creationTimestamp"].as_str().unwrap_or_default().to_string(),
+    }
+}
+
+async fn configmaps_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sConfigMap>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "configmaps".to_string()];
+    args.extend(ns_args(namespace));
+    args.push("-o".into());
+    args.push("json".into());
+    let stdout = run(args).await?;
+    let items = items_from_list(&stdout)?;
+    Ok(items.iter().map(configmap_from_json).collect())
+}
+
+#[tauri::command]
+pub async fn k8s_configmaps(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sConfigMap>, String> {
+    validate_profile_name(&profile)?;
+    configmaps_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+// ---------- Secrets ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sSecret {
+    pub name: String,
+    pub namespace: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub keys: Vec<String>,
+    pub created_at: String,
+}
+
+/// Build a [`K8sSecret`] from raw JSON. Only key *names* are kept — actual
+/// `data`/`stringData` values are dropped here and never leave the backend
+/// via this path (§6.6: "drop values before they leave the backend").
+fn secret_from_json(secret: &Value) -> K8sSecret {
+    let mut keys = sorted_keys_of(secret, "data");
+    keys.extend(sorted_keys_of(secret, "stringData"));
+    keys.sort();
+    keys.dedup();
+
+    K8sSecret {
+        name: secret["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+        namespace: secret["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+        type_: secret["type"].as_str().unwrap_or("Opaque").to_string(),
+        keys,
+        created_at: secret["metadata"]["creationTimestamp"].as_str().unwrap_or_default().to_string(),
+    }
+}
+
+async fn secrets_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sSecret>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "secrets".to_string()];
+    args.extend(ns_args(namespace));
+    args.push("-o".into());
+    args.push("json".into());
+    let stdout = run(args).await?;
+    let items = items_from_list(&stdout)?;
+    Ok(items.iter().map(secret_from_json).collect())
+}
+
+#[tauri::command]
+pub async fn k8s_secrets(app: AppHandle, profile: String, namespace: Option<String>) -> Result<Vec<K8sSecret>, String> {
+    validate_profile_name(&profile)?;
+    secrets_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretValue {
+    pub value: String,
+    pub binary: bool,
+}
+
+/// Decode a single secret key's base64 value (as stored in `data`), or find
+/// it directly in `stringData` if kubectl happens to return it there.
+/// `binary: true` when the decoded bytes aren't valid UTF-8, in which case
+/// `value` stays base64-encoded (§6.6).
+fn decode_secret_key(secret: &Value, key: &str) -> Result<SecretValue, String> {
+    use base64::Engine;
+
+    if let Some(raw) = secret["data"][key].as_str() {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(raw)
+            .map_err(|e| format!("failed to base64-decode secret key {key:?}: {e}"))?;
+        return Ok(match String::from_utf8(bytes) {
+            Ok(s) => SecretValue { value: s, binary: false },
+            // Not valid UTF-8: keep the original base64 text as `value` and
+            // flag `binary` so the frontend knows not to render it as text.
+            Err(_) => SecretValue { value: raw.to_string(), binary: true },
+        });
+    }
+    if let Some(s) = secret["stringData"][key].as_str() {
+        return Ok(SecretValue { value: s.to_string(), binary: false });
+    }
+    Err(format!("key {key:?} not found in secret"))
+}
+
+#[tauri::command]
+pub async fn k8s_secret_value(
+    app: AppHandle,
+    profile: String,
+    namespace: String,
+    name: String,
+    key: String,
+) -> Result<SecretValue, String> {
+    validate_profile_name(&profile)?;
+    validate_k8s_arg("namespace", &namespace)?;
+    validate_k8s_arg("name", &name)?;
+    validate_k8s_arg("key", &key)?;
+
+    let args = vec![
+        "get".to_string(),
+        "secret".to_string(),
+        name,
+        "-n".to_string(),
+        namespace,
+        "-o".to_string(),
+        "json".to_string(),
+    ];
+    let stdout = kubeconfig::kubectl(&app, &profile, &args).await?;
+    let secret: Value = serde_json::from_str(stdout.trim()).map_err(|e| format!("failed to parse kubectl JSON: {e}"))?;
+    decode_secret_key(&secret, &key)
+}
+
+// ---------- Ingresses ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sIngressRule {
+    pub host: Option<String>,
+    pub path: String,
+    pub path_type: Option<String>,
+    pub backend: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sIngress {
+    pub name: String,
+    pub namespace: String,
+    pub class_name: Option<String>,
+    pub hosts: Vec<String>,
+    pub address: Option<String>,
+    pub ports: String,
+    pub tls: bool,
+    pub rules: Vec<K8sIngressRule>,
+    pub created_at: String,
+}
+
+fn ingress_address(ing: &Value) -> Option<String> {
+    let ingress_list = ing["status"]["loadBalancer"]["ingress"].as_array()?;
+    let first = ingress_list.first()?;
+    first["ip"]
+        .as_str()
+        .or_else(|| first["hostname"].as_str())
+        .map(str::to_string)
+}
+
+fn ingress_from_json(ing: &Value) -> K8sIngress {
+    let rules = quantity::flatten_ingress_rules(ing)
+        .into_iter()
+        .map(|r| K8sIngressRule { host: r.host, path: r.path, path_type: r.path_type, backend: r.backend })
+        .collect();
+    let has_tls = ing["spec"]["tls"].as_array().map(|a| !a.is_empty()).unwrap_or(false);
+
+    K8sIngress {
+        name: ing["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+        namespace: ing["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+        class_name: ing["spec"]["ingressClassName"].as_str().map(str::to_string),
+        hosts: quantity::ingress_hosts(ing),
+        address: ingress_address(ing),
+        ports: quantity::ingress_ports_summary(ing),
+        tls: has_tls,
+        rules,
+        created_at: ing["metadata"]["creationTimestamp"].as_str().unwrap_or_default().to_string(),
+    }
+}
+
+async fn ingresses_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sIngress>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "ingresses".to_string()];
+    args.extend(ns_args(namespace));
+    args.push("-o".into());
+    args.push("json".into());
+    let stdout = run(args).await?;
+    let items = items_from_list(&stdout)?;
+    Ok(items.iter().map(ingress_from_json).collect())
+}
+
+#[tauri::command]
+pub async fn k8s_ingresses(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sIngress>, String> {
+    validate_profile_name(&profile)?;
+    ingresses_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+// ---------- Delete / Edit / Apply ----------
+
+#[tauri::command]
+pub async fn k8s_delete(
+    app: AppHandle,
+    profile: String,
+    kind: String,
+    namespace: Option<String>,
+    name: String,
+) -> Result<(), String> {
+    validate_profile_name(&profile)?;
+    let kind = validate_kind(&kind)?;
+    reject_node_mutation(kind)?;
+    validate_k8s_arg("name", &name)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
+    if kind_is_namespaced(kind) && namespace.is_none() {
+        return Err(format!("namespace is required to delete a {kind}"));
+    }
+
+    let mut args = vec!["delete".to_string(), kind.to_string(), name];
+    if let Some(ns) = &namespace {
+        args.push("-n".into());
+        args.push(ns.clone());
+    }
+    args.push("--wait=false".to_string());
+    kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
+}
+
+/// Strip `metadata.managedFields` and the whole `status` section from a
+/// parsed `kubectl get -o yaml` document, keeping `resourceVersion` (needed
+/// for the subsequent `k8s_apply_yaml` conflict check). Falls back to
+/// returning the original text unchanged if it doesn't parse as YAML.
+fn strip_edit_yaml_fields(yaml: &str) -> String {
+    let Ok(mut doc) = serde_yaml::from_str::<serde_yaml::Value>(yaml) else {
+        return yaml.to_string();
+    };
+    if let Some(mapping) = doc.as_mapping_mut() {
+        mapping.remove(serde_yaml::Value::String("status".to_string()));
+        if let Some(serde_yaml::Value::Mapping(metadata)) =
+            mapping.get_mut(serde_yaml::Value::String("metadata".to_string()))
+        {
+            metadata.remove(serde_yaml::Value::String("managedFields".to_string()));
+        }
+    }
+    serde_yaml::to_string(&doc).unwrap_or_else(|_| yaml.to_string())
+}
+
+#[tauri::command]
+pub async fn k8s_edit_yaml(
+    app: AppHandle,
+    profile: String,
+    kind: String,
+    namespace: Option<String>,
+    name: String,
+) -> Result<String, String> {
+    validate_profile_name(&profile)?;
+    let kind = validate_kind(&kind)?;
+    reject_node_mutation(kind)?;
+    validate_k8s_arg("name", &name)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
+
+    let mut args = vec!["get".to_string(), kind.to_string(), name];
+    if let Some(ns) = &namespace {
+        args.push("-n".into());
+        args.push(ns.clone());
+    }
+    args.push("-o".into());
+    args.push("yaml".into());
+    let yaml = kubeconfig::kubectl(&app, &profile, &args).await?;
+    Ok(strip_edit_yaml_fields(&yaml))
+}
+
+#[tauri::command]
+pub async fn k8s_apply_yaml(
+    app: AppHandle,
+    profile: String,
+    kind: String,
+    namespace: Option<String>,
+    name: String,
+    content: String,
+    dry_run: bool,
+) -> Result<String, String> {
+    validate_profile_name(&profile)?;
+    let kind = validate_kind(&kind)?;
+    reject_node_mutation(kind)?;
+    validate_k8s_arg("name", &name)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
+
+    let parsed: serde_yaml::Value =
+        serde_yaml::from_str(&content).map_err(|e| format!("invalid YAML: {e}"))?;
+    quantity::apply_target_matches(&parsed, kind, namespace.as_deref(), &name)?;
+
+    let mut args = vec!["replace".to_string(), "-f".to_string(), "-".to_string()];
+    if let Some(ns) = &namespace {
+        args.push("-n".into());
+        args.push(ns.clone());
+    }
+    if dry_run {
+        args.push("--dry-run=server".to_string());
+    }
+
+    match kubeconfig::kubectl_with_stdin(&app, &profile, &args, &content).await {
+        Ok(out) => Ok(out),
+        Err(e) if e.contains("Conflict") || e.to_lowercase().contains("the object has been modified") => {
+            Err("modified since you opened it — reload".to_string())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ---------- Metrics ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodMetricEntry {
+    pub namespace: String,
+    pub name: String,
+    pub cpu_milli: i64,
+    pub mem_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodMetrics {
+    pub available: bool,
+    pub reason: Option<String>,
+    pub pods: Vec<PodMetricEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeMetricEntry {
+    pub name: String,
+    pub cpu_milli: i64,
+    pub mem_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeMetrics {
+    pub available: bool,
+    pub reason: Option<String>,
+    pub nodes: Vec<NodeMetricEntry>,
+}
+
+/// The friendly reason returned when the metrics API isn't present (§6.6:
+/// 404/`ServiceUnavailable`/"the server could not find the requested
+/// resource" -> `available:false`, not an `Err`).
+const METRICS_UNAVAILABLE_REASON: &str = "metrics-server is not installed or not ready";
+
+/// Whether an error string from `kubectl get --raw` against the metrics API
+/// indicates the API simply isn't installed/ready (as opposed to some other,
+/// real failure that should still surface as an `Err`).
+fn is_metrics_unavailable_error(err: &str) -> bool {
+    err.contains("NotFound")
+        || err.contains("ServiceUnavailable")
+        || err.contains("the server could not find the requested resource")
+        || err.contains("404")
+}
+
+/// Sum `containers[].usage.{cpu,memory}` for one metrics API item (pod or
+/// node metrics entries share this container-list shape for pods; nodes have
+/// `usage` directly — see [`parse_node_metrics_items`]).
+fn sum_container_usage(containers: &Value) -> (i64, i64) {
+    let Some(arr) = containers.as_array() else {
+        return (0, 0);
+    };
+    let mut cpu = 0i64;
+    let mut mem = 0i64;
+    for c in arr {
+        if let Some(s) = c["usage"]["cpu"].as_str() {
+            cpu += quantity::parse_cpu_millis(s).unwrap_or(0);
+        }
+        if let Some(s) = c["usage"]["memory"].as_str() {
+            mem += quantity::parse_memory_bytes(s).unwrap_or(0);
+        }
+    }
+    (cpu, mem)
+}
+
+fn parse_pod_metrics_items(items: &[Value]) -> Vec<PodMetricEntry> {
+    items
+        .iter()
+        .map(|item| {
+            let (cpu, mem) = sum_container_usage(&item["containers"]);
+            PodMetricEntry {
+                namespace: item["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+                name: item["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+                cpu_milli: cpu,
+                mem_bytes: mem,
+            }
+        })
+        .collect()
+}
+
+fn parse_node_metrics_items(items: &[Value]) -> Vec<NodeMetricEntry> {
+    items
+        .iter()
+        .map(|item| {
+            let cpu = item["usage"]["cpu"].as_str().and_then(quantity::parse_cpu_millis).unwrap_or(0);
+            let mem = item["usage"]["memory"].as_str().and_then(quantity::parse_memory_bytes).unwrap_or(0);
+            NodeMetricEntry { name: item["metadata"]["name"].as_str().unwrap_or_default().to_string(), cpu_milli: cpu, mem_bytes: mem }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn k8s_pod_metrics(app: AppHandle, profile: String, namespace: Option<String>) -> Result<PodMetrics, String> {
+    validate_profile_name(&profile)?;
+    if let Some(ns) = &namespace {
+        validate_k8s_arg("namespace", ns)?;
+    }
+
+    let path = match &namespace {
+        Some(ns) => format!("/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods"),
+        None => "/apis/metrics.k8s.io/v1beta1/pods".to_string(),
+    };
+    let args = vec!["get".to_string(), "--raw".to_string(), path];
+
+    match kubeconfig::kubectl(&app, &profile, &args).await {
+        Ok(stdout) => {
+            let items = items_from_list(&stdout)?;
+            Ok(PodMetrics { available: true, reason: None, pods: parse_pod_metrics_items(&items) })
+        }
+        Err(e) if is_metrics_unavailable_error(&e) => {
+            Ok(PodMetrics { available: false, reason: Some(METRICS_UNAVAILABLE_REASON.to_string()), pods: vec![] })
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub async fn k8s_node_metrics(app: AppHandle, profile: String) -> Result<NodeMetrics, String> {
+    validate_profile_name(&profile)?;
+    let args = vec!["get".to_string(), "--raw".to_string(), "/apis/metrics.k8s.io/v1beta1/nodes".to_string()];
+
+    match kubeconfig::kubectl(&app, &profile, &args).await {
+        Ok(stdout) => {
+            let items = items_from_list(&stdout)?;
+            Ok(NodeMetrics { available: true, reason: None, nodes: parse_node_metrics_items(&items) })
+        }
+        Err(e) if is_metrics_unavailable_error(&e) => {
+            Ok(NodeMetrics { available: false, reason: Some(METRICS_UNAVAILABLE_REASON.to_string()), nodes: vec![] })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Shell one-liner used for interactive shells in a container/pod: prefer
@@ -856,6 +1402,192 @@ mod tests {
                 v.iter().map(|n| format!("{} {} {}", n.name, n.status, n.version)).collect::<Vec<_>>()
             ),
             Err(e) => println!("nodes ERROR: {e}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch_dir);
+    }
+
+    /// Live diagnostic for every new §6.6 READ command against this
+    /// machine's running colima k3s (profile `default`, context `colima`,
+    /// namespaces k0smotron/kube-system/redis, metrics-server installed).
+    /// Same fetch-kubeconfig-into-scratch-dir approach as
+    /// [`live_colima_k8s_listing`], but calling straight through
+    /// `kubeconfig::run_kubectl_once` with the exact argv the tauri commands
+    /// build, so this exercises the real command bodies' logic (JSON
+    /// parsing, quantity parsing, masking, edit/apply) without needing a
+    /// Tauri `AppHandle`. Read-only: only a dry-run (server-side, no
+    /// persisted change) apply is performed, against an unchanged configmap.
+    /// Never deletes/edits/applies (non-dry-run) anything, never touches
+    /// other kube contexts, never touches `~/.kube/config`, never starts/
+    /// stops colima. Ignored by default; run with `cargo test
+    /// live_colima_k8s_v012_reads -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_colima_k8s_v012_reads() {
+        let profile = "default";
+        let ctx = kube_context(profile);
+        let scratch_dir = std::env::temp_dir().join(format!(
+            "colima-desktop-live-k8s-v012-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&scratch_dir).unwrap();
+        let kubeconfig_path = kubeconfig::fetch_and_write(&scratch_dir, profile)
+            .await
+            .expect("fetch_and_write should succeed against a running colima k3s VM");
+
+        let run = |args: Vec<String>| {
+            let path = kubeconfig_path.clone();
+            let ctx = ctx.clone();
+            async move { kubeconfig::run_kubectl_once(&path, &ctx, &args).await }
+        };
+
+        // --- configmaps ---------------------------------------------------
+        let mut sample_cm: Option<(String, String)> = None; // (namespace, name)
+        match configmaps_via(run, &None).await {
+            Ok(v) => {
+                println!(
+                    "configmaps: {} e.g. {:?}",
+                    v.len(),
+                    v.iter().take(5).map(|c| format!("{}/{} keys={:?}", c.namespace, c.name, c.keys)).collect::<Vec<_>>()
+                );
+                sample_cm = v.into_iter().next().map(|c| (c.namespace, c.name));
+            }
+            Err(e) => println!("configmaps ERROR: {e}"),
+        }
+
+        // --- secrets: print only names/key counts, never values -----------
+        let mut sample_secret: Option<(String, String, Vec<String>)> = None;
+        match secrets_via(run, &None).await {
+            Ok(v) => {
+                println!(
+                    "secrets: {} e.g. {:?}",
+                    v.len(),
+                    v.iter().take(5).map(|s| format!("{}/{} type={} #keys={}", s.namespace, s.name, s.type_, s.keys.len())).collect::<Vec<_>>()
+                );
+                sample_secret = v.into_iter().find(|s| !s.keys.is_empty()).map(|s| (s.namespace, s.name, s.keys));
+            }
+            Err(e) => println!("secrets ERROR: {e}"),
+        }
+
+        // --- secret_value: reveal exactly one key of one secret, print only
+        //     whether it decoded + its length (never the value itself) -----
+        if let Some((ns, name, keys)) = &sample_secret {
+            if let Some(key) = keys.first() {
+                let args = vec![
+                    "get".to_string(), "secret".to_string(), name.clone(),
+                    "-n".to_string(), ns.clone(), "-o".to_string(), "json".to_string(),
+                ];
+                match run(args).await {
+                    Ok(stdout) => {
+                        let secret: Value = serde_json::from_str(stdout.trim()).expect("parse secret json");
+                        match decode_secret_key(&secret, key) {
+                            Ok(v) => println!(
+                                "secret_value: {ns}/{name} key={key:?} decoded ok, binary={}, len={}",
+                                v.binary, v.value.len()
+                            ),
+                            Err(e) => println!("secret_value ERROR: {e}"),
+                        }
+                    }
+                    Err(e) => println!("secret_value fetch ERROR: {e}"),
+                }
+            }
+        }
+
+        // --- ingresses (may be empty on this cluster) -----------------------
+        match ingresses_via(run, &None).await {
+            Ok(v) => println!(
+                "ingresses: {} e.g. {:?}",
+                v.len(),
+                v.iter().take(5).map(|i| format!("{}/{} hosts={:?} tls={}", i.namespace, i.name, i.hosts, i.tls)).collect::<Vec<_>>()
+            ),
+            Err(e) => println!("ingresses ERROR: {e}"),
+        }
+
+        // --- pod metrics ------------------------------------------------------
+        let pod_metrics_args = vec![
+            "get".to_string(), "--raw".to_string(), "/apis/metrics.k8s.io/v1beta1/pods".to_string(),
+        ];
+        match run(pod_metrics_args).await {
+            Ok(stdout) => match items_from_list(&stdout) {
+                Ok(items) => {
+                    let entries = parse_pod_metrics_items(&items);
+                    println!(
+                        "pod metrics: available=true, {} entries, e.g. {:?}",
+                        entries.len(),
+                        entries.iter().take(5).map(|e| format!("{}/{} cpuMilli={} memBytes={}", e.namespace, e.name, e.cpu_milli, e.mem_bytes)).collect::<Vec<_>>()
+                    );
+                }
+                Err(e) => println!("pod metrics parse ERROR: {e}"),
+            },
+            Err(e) if is_metrics_unavailable_error(&e) => {
+                println!("pod metrics: available=false, reason={METRICS_UNAVAILABLE_REASON:?} (raw: {e})")
+            }
+            Err(e) => println!("pod metrics ERROR: {e}"),
+        }
+
+        // --- node metrics ------------------------------------------------------
+        let node_metrics_args =
+            vec!["get".to_string(), "--raw".to_string(), "/apis/metrics.k8s.io/v1beta1/nodes".to_string()];
+        match run(node_metrics_args).await {
+            Ok(stdout) => match items_from_list(&stdout) {
+                Ok(items) => {
+                    let entries = parse_node_metrics_items(&items);
+                    println!(
+                        "node metrics: available=true, {} entries: {:?}",
+                        entries.len(),
+                        entries.iter().map(|e| format!("{} cpuMilli={} memBytes={}", e.name, e.cpu_milli, e.mem_bytes)).collect::<Vec<_>>()
+                    );
+                }
+                Err(e) => println!("node metrics parse ERROR: {e}"),
+            },
+            Err(e) if is_metrics_unavailable_error(&e) => {
+                println!("node metrics: available=false, reason={METRICS_UNAVAILABLE_REASON:?} (raw: {e})")
+            }
+            Err(e) => println!("node metrics ERROR: {e}"),
+        }
+
+        // --- edit_yaml for one configmap: print first lines only -----------
+        let mut edited_yaml_and_target: Option<(String, String, String)> = None; // (yaml, namespace, name)
+        if let Some((ns, name)) = &sample_cm {
+            let args = vec![
+                "get".to_string(), "configmap".to_string(), name.clone(),
+                "-n".to_string(), ns.clone(), "-o".to_string(), "yaml".to_string(),
+            ];
+            match run(args).await {
+                Ok(yaml) => {
+                    let stripped = strip_edit_yaml_fields(&yaml);
+                    let first_lines: Vec<&str> = stripped.lines().take(8).collect();
+                    println!("edit_yaml {ns}/{name} first lines:\n{}", first_lines.join("\n"));
+                    assert!(!stripped.contains("managedFields"), "managedFields should be stripped");
+                    assert!(!stripped.contains("\nstatus:"), "status should be stripped");
+                    edited_yaml_and_target = Some((stripped, ns.clone(), name.clone()));
+                }
+                Err(e) => println!("edit_yaml ERROR: {e}"),
+            }
+        } else {
+            println!("edit_yaml: skipped (no configmap found to sample)");
+        }
+
+        // --- apply_yaml dryRun=true on that unchanged configmap YAML --------
+        if let Some((yaml, ns, name)) = &edited_yaml_and_target {
+            let parsed: serde_yaml::Value = serde_yaml::from_str(yaml).expect("parse stripped yaml");
+            match quantity::apply_target_matches(&parsed, "configmap", Some(ns.as_str()), name) {
+                Ok(()) => {
+                    let args = vec![
+                        "replace".to_string(), "-f".to_string(), "-".to_string(),
+                        "-n".to_string(), ns.clone(),
+                        "--dry-run=server".to_string(),
+                    ];
+                    match kubeconfig::run_kubectl_once_with_stdin(&kubeconfig_path, &ctx, &args, yaml).await {
+                        Ok(out) => println!("apply_yaml dryRun=true {ns}/{name}: OK, output: {out}"),
+                        Err(e) => println!("apply_yaml dryRun=true {ns}/{name} ERROR (non-fatal for this diagnostic): {e}"),
+                    }
+                }
+                Err(e) => println!("apply_target_matches ERROR (unexpected): {e}"),
+            }
+        } else {
+            println!("apply_yaml: skipped (no edited configmap YAML available)");
         }
 
         let _ = std::fs::remove_dir_all(&scratch_dir);

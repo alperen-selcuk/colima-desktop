@@ -141,6 +141,11 @@ export interface K8sPod {
   node: string | null;
   podIp: string | null;
   containers: string[];
+  // §6.6: sum over regular containers; null when no container sets it.
+  cpuRequestMilli: number | null;
+  cpuLimitMilli: number | null;
+  memRequestBytes: number | null;
+  memLimitBytes: number | null;
 }
 
 export interface K8sDeployment {
@@ -174,6 +179,76 @@ export interface K8sNode {
   cpu: string;
   memory: string;
   createdAt: string;
+  // §6.6
+  cpuAllocatableMilli: number | null;
+  memAllocatableBytes: number | null;
+}
+
+// ---- §6.6: ConfigMaps, Secrets, Ingresses, resource usage ----
+
+export interface K8sConfigMap {
+  name: string;
+  namespace: string;
+  keys: string[];
+  createdAt: string;
+}
+
+/** Never carries values — only key names. Use `k8sSecretValue` to reveal one. */
+export interface K8sSecret {
+  name: string;
+  namespace: string;
+  type: string;
+  keys: string[];
+  createdAt: string;
+}
+
+export interface K8sIngressRule {
+  host: string | null;
+  path: string;
+  pathType: string | null;
+  backend: string; // "svc:port"
+}
+
+export interface K8sIngress {
+  name: string;
+  namespace: string;
+  className: string | null;
+  hosts: string[];
+  address: string | null;
+  ports: string; // "80" or "80, 443"
+  tls: boolean;
+  rules: K8sIngressRule[];
+  createdAt: string;
+}
+
+export interface PodMetricEntry {
+  namespace: string;
+  name: string;
+  cpuMilli: number;
+  memBytes: number;
+}
+
+export interface PodMetrics {
+  available: boolean;
+  reason: string | null;
+  pods: PodMetricEntry[];
+}
+
+export interface NodeMetricEntry {
+  name: string;
+  cpuMilli: number;
+  memBytes: number;
+}
+
+export interface NodeMetrics {
+  available: boolean;
+  reason: string | null;
+  nodes: NodeMetricEntry[];
+}
+
+export interface SecretValue {
+  value: string;
+  binary: boolean; // if true, `value` is base64
 }
 
 export interface LogEvent {
@@ -250,7 +325,18 @@ export type TerminalTarget =
   | { kind: "container"; id: string }
   | { kind: "pod"; namespace: string; pod: string; container: string | null };
 
-export type K8sKind = "pod" | "deployment" | "service" | "node";
+// §6.6 whitelist: namespaced kinds are editable/deletable; "node" is
+// cluster-scoped and read-only (no delete/edit — backend rejects it).
+export type K8sKind =
+  | "pod"
+  | "deployment"
+  | "service"
+  | "configmap"
+  | "secret"
+  | "ingress"
+  | "node";
+
+export type K8sNamespacedKind = Exclude<K8sKind, "node">;
 
 // ---- k3s version picker (§6.5) ----
 

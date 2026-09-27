@@ -110,7 +110,7 @@ export function Dock({ profile, running }: DockProps) {
                 />
                 <div
                   className="absolute bottom-full left-0 z-20 mb-1 min-w-[220px] rounded-md border py-1 shadow-lg"
-                  style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 -12px 32px var(--shadow-color)" }}
+                  style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 -12px 32px var(--shadow-color-lg)" }}
                 >
                   <button
                     onClick={(e) => {

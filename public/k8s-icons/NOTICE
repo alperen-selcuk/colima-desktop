@@ -1,0 +1,23 @@
+Kubernetes icons — attribution
+================================
+
+The SVG icons in this directory (pod.svg, deploy.svg, svc.svg, ing.svg, cm.svg,
+secret.svg, node.svg, ns.svg) are copied unmodified from the official
+Kubernetes community icon set:
+
+  Source:  https://github.com/kubernetes/community/tree/main/icons/svg/resources/unlabeled
+           https://github.com/kubernetes/community/tree/main/icons/svg/infrastructure_components/unlabeled
+  License: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Copyright: The Kubernetes Authors
+
+The Kubernetes wheel logo (wheel.svg) is copied unmodified from:
+
+  Source:  https://github.com/kubernetes/kubernetes/blob/master/logo/logo.svg
+  License: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/), per
+           https://github.com/kubernetes/kubernetes/blob/master/logo/usage_guidelines.md
+  Copyright: The Kubernetes Authors
+
+Colima Desktop is an independent open-source project and is not affiliated
+with, sponsored by, or endorsed by the Kubernetes project or The Linux
+Foundation. "Kubernetes" and the Kubernetes logo are trademarks of The Linux
+Foundation.

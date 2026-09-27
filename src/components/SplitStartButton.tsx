@@ -60,7 +60,7 @@ export function SplitStartButton({
       {open && (
         <div
           className="absolute left-0 top-full z-30 mt-1 min-w-[220px] rounded-md border py-1 shadow-lg"
-          style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color)" }}
+          style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color-lg)" }}
         >
           <button
             onClick={() => {

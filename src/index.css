@@ -9,42 +9,50 @@
  * "System" preference (useTheme hook) means: no data-theme attribute is set.
  */
 :root {
-  --surface-0: #f4f6f5;
+  --surface-0: #eef2f0;
   --surface-1: #ffffff;
-  --surface-2: #eef1ef;
-  --surface-3: #e4e9e6;
-  --border: #d7ddda;
-  --border-strong: #c2cac6;
-  --text: #14201b;
-  --text-dim: #55655d;
-  --text-faint: #8a978f;
-  --accent: #16a34a;
-  --accent-strong: #15803d;
-  --accent-soft: rgba(22, 163, 74, 0.13);
-  --warn: #a86a08;
-  --warn-soft: rgba(168, 106, 8, 0.14);
-  --danger: #c22f24;
-  --danger-soft: rgba(194, 47, 36, 0.12);
-  --info: #1c6fb0;
-  --info-soft: rgba(28, 111, 176, 0.12);
-  --shadow-color: rgba(20, 32, 27, 0.1);
+  --surface-2: #f3f6f4;
+  --surface-3: #e8ede9;
+  --border: #cad5cd;
+  --border-strong: #b2c0b7;
+  --text: #16211c;
+  --text-dim: #4c5c53;
+  --text-faint: #77897e;
+  --accent: #0c7f47;
+  --accent-strong: #0a6a3b;
+  --accent-soft: rgba(12, 127, 71, 0.12);
+  --accent-contrast: #ffffff;
+  --warn: #8f5a00;
+  --warn-soft: rgba(143, 90, 0, 0.13);
+  --danger: #b8271c;
+  --danger-soft: rgba(184, 39, 28, 0.11);
+  --info: #0f5f96;
+  --info-soft: rgba(15, 95, 150, 0.11);
+  --shadow-color: rgba(30, 41, 36, 0.08);
+  --shadow-color-lg: rgba(24, 35, 30, 0.16);
+  --selection: rgba(12, 127, 71, 0.18);
+  --row-zebra: rgba(76, 92, 83, 0.035);
 
   /* xterm.js theme, kept in sync with the tokens above (see useTheme). */
   --term-bg: var(--surface-1);
   --term-fg: var(--text);
   --term-cursor: var(--accent);
-  --term-selection: rgba(22, 163, 74, 0.25);
-  --term-black: #1a2320;
-  --term-red: #c22f24;
-  --term-green: #16a34a;
-  --term-yellow: #a86a08;
-  --term-blue: #1c6fb0;
-  --term-magenta: #9333ea;
-  --term-cyan: #0891b2;
-  --term-white: #d7ddda;
-  --term-bright-black: #8a978f;
+  --term-selection: rgba(12, 127, 71, 0.16);
+  --term-black: #1c2822;
+  --term-red: #b8271c;
+  --term-green: #0c7f47;
+  --term-yellow: #8f5a00;
+  --term-blue: #0f5f96;
+  --term-magenta: #8033a8;
+  --term-cyan: #0b7285;
+  --term-white: #cad5cd;
+  --term-bright-black: #77897e;
 
   color-scheme: light;
+}
+
+::selection {
+  background: var(--selection);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -61,6 +69,7 @@
     --accent: #3ecf8e;
     --accent-strong: #63dba5;
     --accent-soft: rgba(62, 207, 142, 0.14);
+    --accent-contrast: #04140c;
     --warn: #e2b93b;
     --warn-soft: rgba(226, 185, 59, 0.14);
     --danger: #e2574c;
@@ -68,6 +77,9 @@
     --info: #4a9eda;
     --info-soft: rgba(74, 158, 218, 0.14);
     --shadow-color: rgba(0, 0, 0, 0.45);
+    --shadow-color-lg: rgba(0, 0, 0, 0.45);
+    --selection: rgba(62, 207, 142, 0.25);
+    --row-zebra: transparent;
 
     --term-bg: var(--surface-1);
     --term-fg: var(--text);
@@ -100,6 +112,7 @@
   --accent: #3ecf8e;
   --accent-strong: #63dba5;
   --accent-soft: rgba(62, 207, 142, 0.14);
+  --accent-contrast: #04140c;
   --warn: #e2b93b;
   --warn-soft: rgba(226, 185, 59, 0.14);
   --danger: #e2574c;
@@ -107,6 +120,9 @@
   --info: #4a9eda;
   --info-soft: rgba(74, 158, 218, 0.14);
   --shadow-color: rgba(0, 0, 0, 0.45);
+  --shadow-color-lg: rgba(0, 0, 0, 0.45);
+  --selection: rgba(62, 207, 142, 0.25);
+  --row-zebra: transparent;
 
   --term-bg: var(--surface-1);
   --term-fg: var(--text);
@@ -154,6 +170,13 @@ code,
 .mono,
 .font-mono-app {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Subtle zebra striping for data tables (light theme only; --row-zebra is
+ * transparent in dark, so this rule is a no-op there). Rows with an explicit
+ * selected/hover background (set inline in Table.tsx's `Tr`) paint over it. */
+tbody tr:nth-child(even) {
+  background: var(--row-zebra);
 }
 
 ::-webkit-scrollbar {

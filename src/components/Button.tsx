@@ -11,7 +11,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const VARIANT_STYLES: Record<Variant, { base: string; style: React.CSSProperties }> = {
   primary: {
     base: "hover:brightness-110 active:brightness-95",
-    style: { background: "var(--accent)", color: "#04140c", border: "1px solid transparent" },
+    style: { background: "var(--accent)", color: "var(--accent-contrast)", border: "1px solid transparent" },
   },
   secondary: {
     base: "hover:brightness-110",

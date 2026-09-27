@@ -34,6 +34,45 @@ pub fn kube_context(profile: &str) -> String {
     }
 }
 
+/// Validate a Kubernetes object/namespace name argument before it's passed to
+/// `kubectl`: non-empty and not starting with `-` (which would otherwise be
+/// interpreted as a flag, i.e. flag injection). This is intentionally looser
+/// than full Kubernetes DNS-subdomain validation — kubectl itself rejects
+/// malformed names — but it closes the specific "leading dash" injection
+/// vector for any argument (kind/namespace/name) that reaches an argv slot
+/// (§6.6).
+pub fn validate_k8s_arg(label: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    if value.starts_with('-') {
+        return Err(format!("{label} must not start with '-': {value:?}"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod k8s_arg_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_normal_names() {
+        assert!(validate_k8s_arg("name", "my-pod").is_ok());
+        assert!(validate_k8s_arg("namespace", "kube-system").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(validate_k8s_arg("name", "").is_err());
+    }
+
+    #[test]
+    fn rejects_leading_dash() {
+        assert!(validate_k8s_arg("name", "-o=json").is_err());
+        assert!(validate_k8s_arg("namespace", "--kubeconfig=/tmp/x").is_err());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

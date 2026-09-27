@@ -1,0 +1,186 @@
+/*
+ * Kubernetes page tokens (§6.6). Separate from src/index.css (owned by
+ * another concurrent workstream) so this page's redesign never conflicts
+ * with the app-wide light-mode rework.
+ *
+ * Two independent color signals are used on this page, deliberately kept
+ * distinct so they never collide visually:
+ *   - "kind" colors (--k8s-pod, --k8s-deploy, ...): identity only. Used for
+ *     the tab's active-indicator underline and a small icon/dot next to a
+ *     resource's name. Never used as a full row/card background.
+ *   - "health" colors (existing --accent/--warn/--danger via usageTone()):
+ *     status only. Used for CPU/Memory usage bars and pod/node status dots.
+ * --k8s-blue is the page-level chrome accent (header, context badge,
+ * namespace selector focus) sitting alongside the app's own green brand
+ * accent (still used for primary buttons and focus rings everywhere else).
+ *
+ * Same three-block pattern as index.css: light default in :root, dark via
+ * prefers-color-scheme, and explicit data-theme overrides.
+ */
+
+:root {
+  --k8s-blue: #326ce5;
+  --k8s-blue-soft: rgba(50, 108, 229, 0.1);
+
+  --k8s-pod: #1f9d73;
+  --k8s-pod-soft: rgba(31, 157, 115, 0.12);
+  --k8s-deploy: #3f6fd6;
+  --k8s-deploy-soft: rgba(63, 111, 214, 0.12);
+  --k8s-svc: #0f8fa8;
+  --k8s-svc-soft: rgba(15, 143, 168, 0.12);
+  --k8s-ing: #8b2fc9;
+  --k8s-ing-soft: rgba(139, 47, 201, 0.1);
+  --k8s-cm: #a1780a;
+  --k8s-cm-soft: rgba(161, 120, 10, 0.12);
+  --k8s-secret: #c33d74;
+  --k8s-secret-soft: rgba(195, 61, 116, 0.12);
+  --k8s-node: #4b5b6d;
+  --k8s-node-soft: rgba(75, 91, 109, 0.12);
+  --k8s-ns: #5b63b7;
+  --k8s-ns-soft: rgba(91, 99, 183, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --k8s-blue: #5b8def;
+    --k8s-blue-soft: rgba(91, 141, 239, 0.14);
+
+    --k8s-pod: #2fb786;
+    --k8s-pod-soft: rgba(47, 183, 134, 0.16);
+    --k8s-deploy: #6f9bef;
+    --k8s-deploy-soft: rgba(111, 155, 239, 0.16);
+    --k8s-svc: #22b8cf;
+    --k8s-svc-soft: rgba(34, 184, 207, 0.16);
+    --k8s-ing: #b57bf0;
+    --k8s-ing-soft: rgba(181, 123, 240, 0.16);
+    --k8s-cm: #d6a419;
+    --k8s-cm-soft: rgba(214, 164, 25, 0.16);
+    --k8s-secret: #e1548c;
+    --k8s-secret-soft: rgba(225, 84, 140, 0.16);
+    --k8s-node: #8a97a6;
+    --k8s-node-soft: rgba(138, 151, 166, 0.16);
+    --k8s-ns: #8a97cf;
+    --k8s-ns-soft: rgba(138, 151, 207, 0.16);
+  }
+}
+
+:root[data-theme="dark"] {
+  --k8s-blue: #5b8def;
+  --k8s-blue-soft: rgba(91, 141, 239, 0.14);
+
+  --k8s-pod: #2fb786;
+  --k8s-pod-soft: rgba(47, 183, 134, 0.16);
+  --k8s-deploy: #6f9bef;
+  --k8s-deploy-soft: rgba(111, 155, 239, 0.16);
+  --k8s-svc: #22b8cf;
+  --k8s-svc-soft: rgba(34, 184, 207, 0.16);
+  --k8s-ing: #b57bf0;
+  --k8s-ing-soft: rgba(181, 123, 240, 0.16);
+  --k8s-cm: #d6a419;
+  --k8s-cm-soft: rgba(214, 164, 25, 0.16);
+  --k8s-secret: #e1548c;
+  --k8s-secret-soft: rgba(225, 84, 140, 0.16);
+  --k8s-node: #8a97a6;
+  --k8s-node-soft: rgba(138, 151, 166, 0.16);
+  --k8s-ns: #8a97cf;
+  --k8s-ns-soft: rgba(138, 151, 207, 0.16);
+}
+
+:root[data-theme="light"] {
+  --k8s-blue: #326ce5;
+  --k8s-blue-soft: rgba(50, 108, 229, 0.1);
+
+  --k8s-pod: #1f9d73;
+  --k8s-pod-soft: rgba(31, 157, 115, 0.12);
+  --k8s-deploy: #3f6fd6;
+  --k8s-deploy-soft: rgba(63, 111, 214, 0.12);
+  --k8s-svc: #0f8fa8;
+  --k8s-svc-soft: rgba(15, 143, 168, 0.12);
+  --k8s-ing: #8b2fc9;
+  --k8s-ing-soft: rgba(139, 47, 201, 0.1);
+  --k8s-cm: #a1780a;
+  --k8s-cm-soft: rgba(161, 120, 10, 0.12);
+  --k8s-secret: #c33d74;
+  --k8s-secret-soft: rgba(195, 61, 116, 0.12);
+  --k8s-node: #4b5b6d;
+  --k8s-node-soft: rgba(75, 91, 109, 0.12);
+  --k8s-ns: #5b63b7;
+  --k8s-ns-soft: rgba(91, 99, 183, 0.12);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Layout helpers specific to the Kubernetes page                          */
+/* ---------------------------------------------------------------------- */
+
+.k8s-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  /* Official marks are colored artwork already; render as-is (no filter/tint)
+   * per the design plan — the page's color story lives in surrounding chrome,
+   * not in recoloring the SVGs themselves. */
+}
+
+.k8s-usage-bar {
+  position: relative;
+  height: 5px;
+  width: 100%;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.k8s-usage-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+
+.k8s-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.k8s-tab[data-active="true"] {
+  color: var(--text);
+}
+
+.k8s-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--text-faint);
+}
+
+.k8s-tab[data-active="true"] .k8s-tab-count {
+  background: var(--k8s-tab-accent-soft, var(--accent-soft));
+  color: var(--k8s-tab-accent, var(--accent));
+}
+
+.k8s-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+}

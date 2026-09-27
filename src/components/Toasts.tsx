@@ -79,7 +79,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               style={{
                 background: "var(--surface-2)",
                 borderColor: "var(--border)",
-                boxShadow: "0 8px 24px var(--shadow-color)",
+                boxShadow: "0 8px 24px var(--shadow-color-lg)",
               }}
             >
               <Icon size={16} style={{ color: COLORS[t.kind], marginTop: 2, flexShrink: 0 }} />

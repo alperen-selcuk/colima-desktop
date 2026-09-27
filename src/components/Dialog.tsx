@@ -36,7 +36,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 480 }: 
           background: "var(--surface-1)",
           borderColor: "var(--border)",
           width,
-          boxShadow: "0 24px 64px var(--shadow-color)",
+          boxShadow: "0 24px 64px var(--shadow-color-lg)",
         }}
       >
         <div

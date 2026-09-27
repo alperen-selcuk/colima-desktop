@@ -9,15 +9,21 @@ import type {
   HostKubeconfigHealth,
   Image,
   K3sVersionsResponse,
+  K8sConfigMap,
   K8sDeployment,
+  K8sIngress,
   K8sNode,
   K8sPod,
+  K8sSecret,
   K8sService,
+  NodeMetrics,
+  PodMetrics,
   Profile,
   ProfileConfig,
   ProfileConfigRaw,
   ProfileStatus,
   RepairResult,
+  SecretValue,
   Volume,
 } from "./types";
 // The real upstream Colima default template (see src-tauri/resources/colima-default.yaml
@@ -190,9 +196,70 @@ export const mockVolumes: Volume[] = [
 ];
 
 export const mockK8sPods: K8sPod[] = [
-  { name: "api-6f8b9c7d-abcde", namespace: "default", phase: "Running", status: "Running", ready: "1/1", restarts: 0, createdAt: isoAgo(2 * 3600_000), node: "colima", podIp: "10.42.0.12", containers: ["api"] },
-  { name: "worker-5d7c6b8f-fghij", namespace: "default", phase: "Running", status: "CrashLoopBackOff", ready: "0/1", restarts: 14, createdAt: isoAgo(2 * 3600_000), node: "colima", podIp: "10.42.0.13", containers: ["worker"] },
-  { name: "coredns-6799fbcd5-klmno", namespace: "kube-system", phase: "Running", status: "Running", ready: "1/1", restarts: 0, createdAt: isoAgo(5 * 86400_000), node: "colima", podIp: "10.42.0.4", containers: ["coredns"] },
+  {
+    name: "api-6f8b9c7d-abcde",
+    namespace: "default",
+    phase: "Running",
+    status: "Running",
+    ready: "1/1",
+    restarts: 0,
+    createdAt: isoAgo(2 * 3600_000),
+    node: "colima",
+    podIp: "10.42.0.12",
+    containers: ["api"],
+    cpuRequestMilli: 100,
+    cpuLimitMilli: 500,
+    memRequestBytes: 64 * 1024 * 1024,
+    memLimitBytes: 256 * 1024 * 1024,
+  },
+  {
+    name: "worker-5d7c6b8f-fghij",
+    namespace: "default",
+    phase: "Running",
+    status: "CrashLoopBackOff",
+    ready: "0/1",
+    restarts: 14,
+    createdAt: isoAgo(2 * 3600_000),
+    node: "colima",
+    podIp: "10.42.0.13",
+    containers: ["worker"],
+    cpuRequestMilli: 250,
+    cpuLimitMilli: 1000,
+    memRequestBytes: 128 * 1024 * 1024,
+    memLimitBytes: 512 * 1024 * 1024,
+  },
+  {
+    name: "web-7c9d8f6b-qrstu",
+    namespace: "default",
+    phase: "Running",
+    status: "Running",
+    ready: "1/1",
+    restarts: 0,
+    createdAt: isoAgo(6 * 3600_000),
+    node: "colima",
+    podIp: "10.42.0.15",
+    containers: ["web"],
+    cpuRequestMilli: 100,
+    cpuLimitMilli: 200,
+    memRequestBytes: 128 * 1024 * 1024,
+    memLimitBytes: 256 * 1024 * 1024,
+  },
+  {
+    name: "coredns-6799fbcd5-klmno",
+    namespace: "kube-system",
+    phase: "Running",
+    status: "Running",
+    ready: "1/1",
+    restarts: 0,
+    createdAt: isoAgo(5 * 86400_000),
+    node: "colima",
+    podIp: "10.42.0.4",
+    containers: ["coredns"],
+    cpuRequestMilli: null,
+    cpuLimitMilli: null,
+    memRequestBytes: null,
+    memLimitBytes: 170 * 1024 * 1024,
+  },
 ];
 
 export const mockK8sDeployments: K8sDeployment[] = [
@@ -206,8 +273,116 @@ export const mockK8sServices: K8sService[] = [
 ];
 
 export const mockK8sNodes: K8sNode[] = [
-  { name: "colima", status: "Ready", roles: "control-plane,master", version: "v1.30.0", internalIp: "192.168.106.2", osImage: "K3s v1.30.0", cpu: "2", memory: "4Gi", createdAt: isoAgo(10 * 86400_000) },
+  {
+    name: "colima",
+    status: "Ready",
+    roles: "control-plane,master",
+    version: "v1.30.0",
+    internalIp: "192.168.106.2",
+    osImage: "K3s v1.30.0",
+    cpu: "2",
+    memory: "4Gi",
+    createdAt: isoAgo(10 * 86400_000),
+    cpuAllocatableMilli: 2000,
+    memAllocatableBytes: 4 * 1024 * 1024 * 1024,
+  },
 ];
+
+export const mockK8sConfigMaps: K8sConfigMap[] = [
+  { name: "api-config", namespace: "default", keys: ["APP_ENV", "LOG_LEVEL", "config.yaml"], createdAt: isoAgo(5 * 86400_000) },
+  { name: "nginx-conf", namespace: "default", keys: ["nginx.conf"], createdAt: isoAgo(12 * 86400_000) },
+  { name: "kube-root-ca.crt", namespace: "kube-system", keys: ["ca.crt"], createdAt: isoAgo(10 * 86400_000) },
+];
+
+export const mockK8sSecrets: K8sSecret[] = [
+  { name: "api-credentials", namespace: "default", type: "Opaque", keys: ["DATABASE_URL", "API_KEY"], createdAt: isoAgo(5 * 86400_000) },
+  { name: "registry-pull-secret", namespace: "default", type: "kubernetes.io/dockerconfigjson", keys: [".dockerconfigjson"], createdAt: isoAgo(12 * 86400_000) },
+  { name: "default-token-xyz12", namespace: "kube-system", type: "kubernetes.io/service-account-token", keys: ["ca.crt", "namespace", "token"], createdAt: isoAgo(10 * 86400_000) },
+];
+
+const mockSecretValues: Record<string, Record<string, string>> = {
+  "api-credentials": {
+    DATABASE_URL: "postgres://api:s3cr3t-p4ss@postgres.default.svc.cluster.local:5432/api",
+    API_KEY: "sk_test_placeholder_1234567890abcdef",
+  },
+  "registry-pull-secret": {
+    ".dockerconfigjson": '{"auths":{"registry.example.com":{"auth":"ZGVtbzpwYXNzd29yZA=="}}}',
+  },
+  "default-token-xyz12": {
+    "ca.crt": "-----BEGIN CERTIFICATE-----\nMIIC...mock...\n-----END CERTIFICATE-----",
+    namespace: "kube-system",
+    token: "eyJhbGciOiJSUzI1NiIsImtpZCI6Im1vY2sifQ.mock.token",
+  },
+};
+
+export function mockK8sSecretValue(name: string, key: string): SecretValue {
+  const value = mockSecretValues[name]?.[key] ?? "";
+  return { value, binary: false };
+}
+
+export const mockK8sIngresses: K8sIngress[] = [
+  {
+    name: "api-ingress",
+    namespace: "default",
+    className: "traefik",
+    hosts: ["api.colima.local"],
+    address: "192.168.106.2",
+    ports: "80, 443",
+    tls: true,
+    rules: [
+      { host: "api.colima.local", path: "/", pathType: "Prefix", backend: "api:80" },
+    ],
+    createdAt: isoAgo(5 * 86400_000),
+  },
+  {
+    name: "web-ingress",
+    namespace: "default",
+    className: "traefik",
+    hosts: ["app.colima.local"],
+    address: "192.168.106.2",
+    ports: "80",
+    tls: false,
+    rules: [
+      { host: "app.colima.local", path: "/", pathType: "Prefix", backend: "web:8080" },
+      { host: "app.colima.local", path: "/api", pathType: "Prefix", backend: "api:80" },
+    ],
+    createdAt: isoAgo(3 * 86400_000),
+  },
+];
+
+// Pod metrics (§6.6): tuned so the four mock pods above land in all three
+// usage-bar color tiers (green < 60%, amber < 85%, red >= 85%), against
+// whichever denominator each pod resolves to (limit -> request -> node
+// allocatable per `selectUsage`):
+//   api    (limit 500m/256Mi):  120m/40%cpu(green), 150Mi/59%mem(green)
+//   worker (limit 1000m/512Mi): 640m/64%cpu(amber), 460Mi/90%mem(red)
+//   web    (limit 200m/256Mi):  190m/95%cpu(red),   80Mi/31%mem(green)
+//   coredns(no cpu req/lim, mem limit 170Mi): cpu falls back to node
+//     allocatable (2000m) -> 30m/1.5%(green); mem 145Mi/85%(red)
+export const mockPodMetrics: PodMetrics = {
+  available: true,
+  reason: null,
+  pods: [
+    { namespace: "default", name: "api-6f8b9c7d-abcde", cpuMilli: 120, memBytes: 150 * 1024 * 1024 },
+    { namespace: "default", name: "worker-5d7c6b8f-fghij", cpuMilli: 640, memBytes: 460 * 1024 * 1024 },
+    { namespace: "default", name: "web-7c9d8f6b-qrstu", cpuMilli: 190, memBytes: 80 * 1024 * 1024 },
+    { namespace: "kube-system", name: "coredns-6799fbcd5-klmno", cpuMilli: 30, memBytes: 145 * 1024 * 1024 },
+  ],
+};
+
+export const mockNodeMetrics: NodeMetrics = {
+  available: true,
+  reason: null,
+  nodes: [{ name: "colima", cpuMilli: 980, memBytes: 2.6 * 1024 * 1024 * 1024 }],
+};
+
+export function mockK8sEditYaml(kind: string, namespace: string | null, name: string): string {
+  return `apiVersion: v1\nkind: ${kind}\nmetadata:\n  name: ${name}\n${namespace ? `  namespace: ${namespace}\n` : ""}  resourceVersion: "12345"\nspec: {}\n`;
+}
+
+export function mockK8sApplyYaml(dryRun: boolean): string {
+  return dryRun ? "(dry run) configured\nno changes were made" : "configured";
+}
 
 export function mockProfileConfigRaw(profile: string): ProfileConfigRaw {
   return {

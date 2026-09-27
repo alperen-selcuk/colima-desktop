@@ -63,7 +63,7 @@ export function TopBar({
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
             <div
               className="absolute left-0 top-full z-20 mt-1 min-w-[200px] rounded-md border py-1 shadow-lg"
-              style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color)" }}
+              style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color-lg)" }}
             >
               {profiles.map((p) => (
                 <button

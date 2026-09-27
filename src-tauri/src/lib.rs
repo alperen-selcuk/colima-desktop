@@ -13,6 +13,7 @@ mod k8s;
 mod kubeconfig;
 mod logs;
 mod pty;
+mod quantity;
 mod state;
 mod terminal;
 mod tray;
@@ -66,6 +67,15 @@ pub fn run() {
             k8s::k8s_scale,
             k8s::k8s_restart_deployment,
             k8s::k8s_yaml,
+            k8s::k8s_configmaps,
+            k8s::k8s_secrets,
+            k8s::k8s_secret_value,
+            k8s::k8s_ingresses,
+            k8s::k8s_delete,
+            k8s::k8s_edit_yaml,
+            k8s::k8s_apply_yaml,
+            k8s::k8s_pod_metrics,
+            k8s::k8s_node_metrics,
             kubeconfig::host_kubeconfig_health,
             kubeconfig::repair_host_kubeconfig,
             logs::start_log_stream,

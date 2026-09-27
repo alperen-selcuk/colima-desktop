@@ -353,6 +353,56 @@ error (block save); a well-formed version not in the known list is a warning. Wh
 the version is empty, prefill colimaDefault. For an existing running cluster, if the chosen version differs from the running
 node version (from `k8s_nodes`), warn: "Changing the version of an existing cluster may require Kubernetes → Reset".
 
+### 6.6 Kubernetes v0.1.2: more kinds, delete/edit, resource usage, redesign
+
+All kubectl calls go through the app-managed kubeconfig helper (§2.1a). Allowed kinds (whitelist, validated in backend):
+namespaced `pod | deployment | service | configmap | secret | ingress`, cluster-scoped `node` (read-only: no delete/edit).
+
+New/changed types (camelCase JSON):
+```ts
+// K8sPod gains (sum over regular containers; null when no container sets it):
+//   cpuRequestMilli, cpuLimitMilli: number | null; memRequestBytes, memLimitBytes: number | null
+// K8sNode gains: cpuAllocatableMilli: number | null; memAllocatableBytes: number | null
+export interface K8sConfigMap { name: string; namespace: string; keys: string[]; createdAt: string; }
+export interface K8sSecret   { name: string; namespace: string; type: string; keys: string[]; createdAt: string; } // never values
+export interface K8sIngress  { name: string; namespace: string; className: string | null; hosts: string[];
+  address: string | null; ports: string /* "80" or "80, 443" */; tls: boolean;
+  rules: { host: string | null; path: string; pathType: string | null; backend: string /* "svc:port" */ }[]; createdAt: string; }
+export interface PodMetrics  { available: boolean; reason: string | null; pods: { namespace: string; name: string; cpuMilli: number; memBytes: number }[]; }
+export interface NodeMetrics { available: boolean; reason: string | null; nodes: { name: string; cpuMilli: number; memBytes: number }[]; }
+export interface SecretValue { value: string; binary: boolean } // binary → value is base64
+```
+New commands:
+| Command | Args | Returns | Implementation |
+|---|---|---|---|
+| `k8s_configmaps` | `profile, namespace: string\|null` | `K8sConfigMap[]` | `get configmaps -o json` (keys = data ∪ binaryData keys, sorted) |
+| `k8s_secrets` | `profile, namespace: string\|null` | `K8sSecret[]` | `get secrets -o json`; drop values before they leave the backend |
+| `k8s_secret_value` | `profile, namespace, name, key` | `SecretValue` | explicit reveal of ONE key; base64-decode; `binary` if not valid UTF-8 |
+| `k8s_ingresses` | `profile, namespace: string\|null` | `K8sIngress[]` | `get ingresses -o json` (networking.k8s.io/v1) |
+| `k8s_delete` | `profile, kind, namespace: string\|null, name` | `void` | `delete <kind> <name> -n ns --wait=false`; node rejected |
+| `k8s_edit_yaml` | `profile, kind, namespace, name` | `string` | `get -o yaml`, remove `metadata.managedFields` and `status`; keep `resourceVersion` |
+| `k8s_apply_yaml` | `profile, kind, namespace, name, content, dryRun: boolean` | `string` (kubectl output) | parse YAML; its `kind`/`metadata.name`/`metadata.namespace` must match the target (else error); `kubectl replace -f - [--dry-run=server]` with content on **stdin** (never a temp file with secrets); friendly message on conflict ("modified since you opened it — reload") |
+| `k8s_pod_metrics` | `profile, namespace: string\|null` | `PodMetrics` | `get --raw /apis/metrics.k8s.io/v1beta1/[namespaces/<ns>/]pods`; sum containers; 404/ServiceUnavailable → `available:false`, reason "metrics-server is not installed or not ready" |
+| `k8s_node_metrics` | `profile` | `NodeMetrics` | `get --raw /apis/metrics.k8s.io/v1beta1/nodes` |
+`k8s_describe` / `k8s_yaml` accept the new kinds; `k8s_yaml` for secrets masks every `data`/`stringData` value as `"••••••"`.
+Quantity parsing (pure, unit-tested): CPU `"250m"`, `"1"`, `"0.5"`, `"123456789n"`, `"1500u"` → millicores; memory
+`"128Mi"`, `"1Gi"`, `"123456Ki"`, `"1G"`, `"500M"`, `"1e3"`, plain bytes → bytes.
+
+UI (Kubernetes page redesign):
+- Kubernetes-flavoured header (official K8s wheel mark, cluster context, k3s version from node, namespace selector with counts).
+- Tabs with official Kubernetes icons (kubernetes/community `icons/svg/resources/unlabeled`, CC-BY-4.0, attributed in
+  README + `public/k8s-icons/NOTICE`): Pods, Deployments, Services, Ingresses, ConfigMaps, Secrets, Nodes — each with a count
+  badge and its own accent colour (defined as CSS variables for both themes).
+- Row actions for every namespaced kind: **Edit** (YAML editor dialog: monospace editor with line numbers, "Validate"
+  = dryRun, "Save" = replace; errors inline), **Delete** (confirm dialog; type the name for deployments/namespaced objects in
+  `kube-system`), plus existing kind-specific actions (logs/shell for pods, scale/restart for deployments).
+- Pods: CPU and Memory columns with coloured usage bars — percentage of limit, else request, else node allocatable;
+  green < 60%, amber < 85%, red ≥ 85%; tooltip with exact values (e.g. `120m / 500m limit`, `180 MiB / 256 MiB`).
+  Nodes tab: CPU/Memory usage bars vs allocatable. Metrics unavailable → subtle note, columns show "—".
+- Secrets: keys shown as chips; values hidden; per-key "Reveal" (calls `k8s_secret_value`) and Copy; auto-hide on close.
+- Ingresses: hosts as clickable links (http/https by `tls`), rules table in the detail drawer.
+- ConfigMaps: keys as chips; detail drawer shows data (values are not secret).
+
 Logo: `public/logo.svg` (transparent background, brand green, works on dark & light) is used in the sidebar header and README.
 
 Toasts for errors/success (simple self-made toast stack). Confirm dialogs for destructive ops. Keyboard: `Cmd/Ctrl+K` focuses search on list pages.

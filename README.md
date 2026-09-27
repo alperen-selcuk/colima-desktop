@@ -170,6 +170,14 @@ Bundles are produced under `src-tauri/target/release/bundle/...`
 
 See [CHANGELOG.md](./CHANGELOG.md) for release notes.
 
+## Icons
+
+The Kubernetes page uses the official Kubernetes icon set (`public/k8s-icons/`) from
+[kubernetes/community](https://github.com/kubernetes/community/tree/main/icons) and the Kubernetes wheel
+logo from [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes/blob/master/logo/logo.svg),
+© The Kubernetes Authors, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). See
+`public/k8s-icons/NOTICE` for full attribution.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
