@@ -2,10 +2,21 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
-## [Unreleased]
+## [0.1.2] - 2026-09-27
 
 ### Added
 
+- Redesigned Kubernetes page: official Kubernetes icons, a per-kind accent colour and count badge on every tab,
+  and a cluster header with context, k3s version and namespace selector.
+- New Kubernetes tabs: **Ingresses** (hosts as clickable links, rules), **ConfigMaps** (keys and data) and
+  **Secrets** (values hidden by default, per-key Reveal and Copy).
+- Edit (YAML editor with server-side dry-run Validate, conflict detection) and Delete (with confirmation; typed
+  name required for deployments and anything in `kube-system`) for pods, deployments, services, ingresses,
+  configmaps and secrets.
+- Pod and node CPU / memory usage from metrics-server as coloured bars (green / amber / red) against limits,
+  requests or node capacity, with exact values on hover.
+- Polished light theme: layered surfaces, subtle elevation, deeper brand green and status colours that meet
+  WCAG AA; the dark theme is unchanged.
 - Typed validation of `colima.yaml` in the configuration editor, mirroring colima's own config types. Values
   colima can't load (e.g. `memory: "abc"`, `cpu: 2.5`, an invalid DNS IP) are shown live with jump-to-field
   links and block saving — colima would otherwise ignore the whole file and silently start with defaults.
