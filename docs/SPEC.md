@@ -270,7 +270,7 @@ the light theme must be fully designed (surfaces, borders, text, status colors, 
 Colima Desktop is an **independent open-source project** (not affiliated with the Colima maintainers); it uses Colima as its engine.
 The sidebar footer shows `Colima Desktop v0.1.0` (version injected at build time from package.json via Vite `define: { __APP_VERSION__ }`)
 — it must NOT show the detected colima version. The detected colima/docker/kubectl versions appear only on the Setup/About view.
-Versions are kept in sync at `0.1.0` in package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json.
+Versions are kept in sync in package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json (the release tag `vX.Y.Z` must match).
 
 ### 6.4 Machine configuration editor ("Start with configuration…") — v0.1.0 addition
 Replaces the need for `colima start --edit` (which opens `$EDITOR` in a terminal). A full-screen dialog that edits the

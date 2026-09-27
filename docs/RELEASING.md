@@ -32,8 +32,8 @@ bozmaz); yani tap'i istediğiniz zaman kurabilirsiniz.
 ### 3. Yeni bir sürüm yayınlama
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 Bu, `.github/workflows/release.yml`'i tetikler:
@@ -57,7 +57,7 @@ brew install --cask colima-desktop
 çalışır hale gelir.
 
 Belirli bir tag için manuel tetiklemek isterseniz: Actions → "Update Homebrew Cask" → Run workflow →
-`tag` alanına `v0.1.0` girin.
+`tag` alanına `v0.1.1` girin.
 
 ### 4. (İsteğe bağlı) Apple Developer ID imzalama/notarization
 
@@ -129,8 +129,8 @@ break the release flow), so you can wire up the tap whenever you're ready.
 ### 3. Publishing a new release
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 This triggers `.github/workflows/release.yml`:
@@ -154,7 +154,7 @@ brew install --cask colima-desktop
 will work.
 
 To trigger it manually for a specific tag: Actions → "Update Homebrew Cask" → Run workflow → enter
-`v0.1.0` in the `tag` field.
+`v0.1.1` in the `tag` field.
 
 ### 4. (Optional) Apple Developer ID signing/notarization
 
