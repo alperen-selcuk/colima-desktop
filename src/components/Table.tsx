@@ -39,6 +39,19 @@ export function Td({ children, className = "", ...rest }: TdHTMLAttributes<HTMLT
   );
 }
 
+/** A single row spanning every column, for a table's loading/empty state
+ * (distinguished from an error, which is rendered as a `QueryErrorBanner`
+ * above the table instead — never silently as an empty table). */
+export function TableStatusRow({ colSpan, children }: { colSpan: number; children: ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-3 py-6 text-center text-[12.5px]" style={{ color: "var(--text-faint)" }}>
+        {children}
+      </td>
+    </tr>
+  );
+}
+
 export function Tr({
   children,
   onClick,

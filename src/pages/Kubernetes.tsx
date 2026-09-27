@@ -4,13 +4,15 @@ import { Boxes, ChevronDown, Rocket, RotateCw, ScrollText, Settings2, TerminalSq
 import * as api from "../lib/api";
 import type { K8sKind, ProfileStatus } from "../lib/types";
 import { relativeAge } from "../lib/format";
-import { Table, Thead, Th, Td, Tr } from "../components/Table";
+import { Table, Thead, Th, Td, Tr, TableStatusRow } from "../components/Table";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StatusDot, statusTone } from "../components/StatusDot";
 import { useToast } from "../components/Toasts";
 import { K8sDetail } from "../components/K8sDetail";
+import { KubeconfigHealthNotice } from "../components/KubeconfigHealthNotice";
+import { QueryErrorBanner } from "../components/QueryErrorBanner";
 import { ScaleDialog } from "../dialogs/ScaleDialog";
 import { useDock } from "../lib/useDock";
 
@@ -57,6 +59,7 @@ export function KubernetesPage({
   const [scaleTarget, setScaleTarget] = useState<{ namespace: string; name: string; replicas: number } | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"reset" | "delete" | null>(null);
+  const [healthNoticeDismissed, setHealthNoticeDismissed] = useState(false);
 
   // §6.5 state machine, based only on `status` (never guess from `Profile.status`
   // — `profile_status` returning null IS "not running", see §4).
@@ -97,6 +100,18 @@ export function KubernetesPage({
     enabled: enabled && tab === "nodes",
     refetchInterval: enabled && tab === "nodes" ? 3000 : false,
   });
+
+  // Terminal kubectl health (§2.1a): whether the user's own `~/.kube/config`
+  // would work for this context, independent of whether the app itself
+  // (via the app-managed kubeconfig) can reach the cluster just fine.
+  const healthQuery = useQuery({
+    queryKey: ["hostKubeconfigHealth", profile],
+    queryFn: () => api.hostKubeconfigHealth(profile),
+    enabled,
+    refetchInterval: enabled ? 30000 : false,
+  });
+  const showHealthNotice =
+    enabled && !healthNoticeDismissed && healthQuery.data?.contextExists === true && healthQuery.data.credentialsMatch === false;
 
   // Quick "Enable Kubernetes" (§6.5): this-session-only, since it calls
   // `kubernetes_action` directly rather than persisting `kubernetes.enabled`
@@ -261,192 +276,246 @@ export function KubernetesPage({
           ))}
         </div>
 
+        {showHealthNotice && (
+          <div className="px-4 pt-3">
+            <KubeconfigHealthNotice
+              profile={profile}
+              contextName={contextName}
+              onDismiss={() => setHealthNoticeDismissed(true)}
+            />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-3">
           {tab === "pods" && (
-            <Table>
-              <Thead>
-                <Th style={{ width: 20 }} />
-                <Th>Name</Th>
-                <Th>Namespace</Th>
-                <Th>Status</Th>
-                <Th>Ready</Th>
-                <Th>Restarts</Th>
-                <Th>Age</Th>
-                <Th>Node</Th>
-                <Th style={{ width: 140 }}>Actions</Th>
-              </Thead>
-              <tbody>
-                {(podsQuery.data ?? []).map((p) => (
-                  <Tr
-                    key={`${p.namespace}/${p.name}`}
-                    onClick={() =>
-                      setSelection({ kind: "pod", namespace: p.namespace, name: p.name, containers: p.containers })
-                    }
-                    selected={selection?.kind === "pod" && selection.name === p.name && selection.namespace === p.namespace}
-                  >
-                    <Td>
-                      <StatusDot tone={statusTone(p.status)} pulse={statusTone(p.status) === "good"} />
-                    </Td>
-                    <Td className="font-medium">{p.name}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{p.namespace}</Td>
-                    <Td style={{ color: statusTone(p.status) === "bad" ? "var(--danger)" : "var(--text-dim)" }}>
-                      {p.status}
-                    </Td>
-                    <Td className="font-mono-app">{p.ready}</Td>
-                    <Td className="font-mono-app" style={{ color: p.restarts > 0 ? "var(--warn)" : "var(--text-dim)" }}>
-                      {p.restarts}
-                    </Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{relativeAge(p.createdAt)}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{p.node ?? "—"}</Td>
-                    <Td>
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Logs"
-                          onClick={() => setSelection({ kind: "pod", namespace: p.namespace, name: p.name, containers: p.containers })}
-                        >
-                          <ScrollText size={11} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Shell"
+            <>
+              {namespacesQuery.isError && (
+                <div className="mb-3">
+                  <QueryErrorBanner error={namespacesQuery.error} onRetry={() => namespacesQuery.refetch()} />
+                </div>
+              )}
+              {podsQuery.isError ? (
+                <QueryErrorBanner error={podsQuery.error} onRetry={() => podsQuery.refetch()} />
+              ) : (
+                <Table>
+                  <Thead>
+                    <Th style={{ width: 20 }} />
+                    <Th>Name</Th>
+                    <Th>Namespace</Th>
+                    <Th>Status</Th>
+                    <Th>Ready</Th>
+                    <Th>Restarts</Th>
+                    <Th>Age</Th>
+                    <Th>Node</Th>
+                    <Th style={{ width: 140 }}>Actions</Th>
+                  </Thead>
+                  <tbody>
+                    {podsQuery.isLoading ? (
+                      <TableStatusRow colSpan={9}>Loading pods…</TableStatusRow>
+                    ) : (podsQuery.data ?? []).length === 0 ? (
+                      <TableStatusRow colSpan={9}>No pods in {namespace ?? "any namespace"}</TableStatusRow>
+                    ) : (
+                      (podsQuery.data ?? []).map((p) => (
+                        <Tr
+                          key={`${p.namespace}/${p.name}`}
                           onClick={() =>
-                            dock.openTerminalTab(
-                              { kind: "pod", namespace: p.namespace, pod: p.name, container: null },
-                              profile,
-                            )
+                            setSelection({ kind: "pod", namespace: p.namespace, name: p.name, containers: p.containers })
                           }
+                          selected={selection?.kind === "pod" && selection.name === p.name && selection.namespace === p.namespace}
                         >
-                          <TerminalSquare size={11} />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Delete"
-                          onClick={() => setConfirmDeletePod({ namespace: p.namespace, name: p.name })}
-                        >
-                          <Trash2 size={11} style={{ color: "var(--danger)" }} />
-                        </Button>
-                      </div>
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+                          <Td>
+                            <StatusDot tone={statusTone(p.status)} pulse={statusTone(p.status) === "good"} />
+                          </Td>
+                          <Td className="font-medium">{p.name}</Td>
+                          <Td style={{ color: "var(--text-dim)" }}>{p.namespace}</Td>
+                          <Td style={{ color: statusTone(p.status) === "bad" ? "var(--danger)" : "var(--text-dim)" }}>
+                            {p.status}
+                          </Td>
+                          <Td className="font-mono-app">{p.ready}</Td>
+                          <Td className="font-mono-app" style={{ color: p.restarts > 0 ? "var(--warn)" : "var(--text-dim)" }}>
+                            {p.restarts}
+                          </Td>
+                          <Td style={{ color: "var(--text-dim)" }}>{relativeAge(p.createdAt)}</Td>
+                          <Td style={{ color: "var(--text-dim)" }}>{p.node ?? "—"}</Td>
+                          <Td>
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Logs"
+                                onClick={() => setSelection({ kind: "pod", namespace: p.namespace, name: p.name, containers: p.containers })}
+                              >
+                                <ScrollText size={11} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Shell"
+                                onClick={() =>
+                                  dock.openTerminalTab(
+                                    { kind: "pod", namespace: p.namespace, pod: p.name, container: null },
+                                    profile,
+                                  )
+                                }
+                              >
+                                <TerminalSquare size={11} />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Delete"
+                                onClick={() => setConfirmDeletePod({ namespace: p.namespace, name: p.name })}
+                              >
+                                <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              </Button>
+                            </div>
+                          </Td>
+                        </Tr>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              )}
+            </>
           )}
 
-          {tab === "deployments" && (
-            <Table>
-              <Thead>
-                <Th>Name</Th>
-                <Th>Namespace</Th>
-                <Th>Ready</Th>
-                <Th>Up-to-date</Th>
-                <Th>Available</Th>
-                <Th>Age</Th>
-                <Th>Images</Th>
-                <Th style={{ width: 120 }}>Actions</Th>
-              </Thead>
-              <tbody>
-                {(deploymentsQuery.data ?? []).map((d) => (
-                  <Tr
-                    key={`${d.namespace}/${d.name}`}
-                    onClick={() => setSelection({ kind: "deployment", namespace: d.namespace, name: d.name })}
-                    selected={selection?.kind === "deployment" && selection.name === d.name && selection.namespace === d.namespace}
-                  >
-                    <Td className="font-medium">{d.name}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{d.namespace}</Td>
-                    <Td className="font-mono-app">{d.ready}</Td>
-                    <Td className="font-mono-app">{d.upToDate}</Td>
-                    <Td className="font-mono-app">{d.available}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{relativeAge(d.createdAt)}</Td>
-                    <Td className="font-mono-app text-[11px] truncate max-w-[180px]" style={{ color: "var(--text-faint)" }}>
-                      {d.images.join(", ")}
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Scale"
-                          onClick={() => setScaleTarget({ namespace: d.namespace, name: d.name, replicas: d.replicas })}
-                        >
-                          {d.replicas}x
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestartDeployment(d.namespace, d.name)}>
-                          <RotateCw size={11} />
-                        </Button>
-                      </div>
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
+          {tab === "deployments" &&
+            (deploymentsQuery.isError ? (
+              <QueryErrorBanner error={deploymentsQuery.error} onRetry={() => deploymentsQuery.refetch()} />
+            ) : (
+              <Table>
+                <Thead>
+                  <Th>Name</Th>
+                  <Th>Namespace</Th>
+                  <Th>Ready</Th>
+                  <Th>Up-to-date</Th>
+                  <Th>Available</Th>
+                  <Th>Age</Th>
+                  <Th>Images</Th>
+                  <Th style={{ width: 120 }}>Actions</Th>
+                </Thead>
+                <tbody>
+                  {deploymentsQuery.isLoading ? (
+                    <TableStatusRow colSpan={8}>Loading deployments…</TableStatusRow>
+                  ) : (deploymentsQuery.data ?? []).length === 0 ? (
+                    <TableStatusRow colSpan={8}>No deployments in {namespace ?? "any namespace"}</TableStatusRow>
+                  ) : (
+                    (deploymentsQuery.data ?? []).map((d) => (
+                      <Tr
+                        key={`${d.namespace}/${d.name}`}
+                        onClick={() => setSelection({ kind: "deployment", namespace: d.namespace, name: d.name })}
+                        selected={selection?.kind === "deployment" && selection.name === d.name && selection.namespace === d.namespace}
+                      >
+                        <Td className="font-medium">{d.name}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{d.namespace}</Td>
+                        <Td className="font-mono-app">{d.ready}</Td>
+                        <Td className="font-mono-app">{d.upToDate}</Td>
+                        <Td className="font-mono-app">{d.available}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{relativeAge(d.createdAt)}</Td>
+                        <Td className="font-mono-app text-[11px] truncate max-w-[180px]" style={{ color: "var(--text-faint)" }}>
+                          {d.images.join(", ")}
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Scale"
+                              onClick={() => setScaleTarget({ namespace: d.namespace, name: d.name, replicas: d.replicas })}
+                            >
+                              {d.replicas}x
+                            </Button>
+                            <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestartDeployment(d.namespace, d.name)}>
+                              <RotateCw size={11} />
+                            </Button>
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            ))}
 
-          {tab === "services" && (
-            <Table>
-              <Thead>
-                <Th>Name</Th>
-                <Th>Namespace</Th>
-                <Th>Type</Th>
-                <Th>Cluster IP</Th>
-                <Th>External IP</Th>
-                <Th>Ports</Th>
-                <Th>Age</Th>
-              </Thead>
-              <tbody>
-                {(servicesQuery.data ?? []).map((s) => (
-                  <Tr key={`${s.namespace}/${s.name}`}>
-                    <Td className="font-medium">{s.name}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{s.namespace}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{s.type}</Td>
-                    <Td className="font-mono-app">{s.clusterIp}</Td>
-                    <Td className="font-mono-app">{s.externalIp ?? "—"}</Td>
-                    <Td className="font-mono-app text-[11px]">{s.ports}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{relativeAge(s.createdAt)}</Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
+          {tab === "services" &&
+            (servicesQuery.isError ? (
+              <QueryErrorBanner error={servicesQuery.error} onRetry={() => servicesQuery.refetch()} />
+            ) : (
+              <Table>
+                <Thead>
+                  <Th>Name</Th>
+                  <Th>Namespace</Th>
+                  <Th>Type</Th>
+                  <Th>Cluster IP</Th>
+                  <Th>External IP</Th>
+                  <Th>Ports</Th>
+                  <Th>Age</Th>
+                </Thead>
+                <tbody>
+                  {servicesQuery.isLoading ? (
+                    <TableStatusRow colSpan={7}>Loading services…</TableStatusRow>
+                  ) : (servicesQuery.data ?? []).length === 0 ? (
+                    <TableStatusRow colSpan={7}>No services in {namespace ?? "any namespace"}</TableStatusRow>
+                  ) : (
+                    (servicesQuery.data ?? []).map((s) => (
+                      <Tr key={`${s.namespace}/${s.name}`}>
+                        <Td className="font-medium">{s.name}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{s.namespace}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{s.type}</Td>
+                        <Td className="font-mono-app">{s.clusterIp}</Td>
+                        <Td className="font-mono-app">{s.externalIp ?? "—"}</Td>
+                        <Td className="font-mono-app text-[11px]">{s.ports}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{relativeAge(s.createdAt)}</Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            ))}
 
-          {tab === "nodes" && (
-            <Table>
-              <Thead>
-                <Th>Name</Th>
-                <Th>Status</Th>
-                <Th>Roles</Th>
-                <Th>Version</Th>
-                <Th>Internal IP</Th>
-                <Th>OS</Th>
-                <Th>CPU</Th>
-                <Th>Memory</Th>
-                <Th>Age</Th>
-              </Thead>
-              <tbody>
-                {(nodesQuery.data ?? []).map((n) => (
-                  <Tr key={n.name}>
-                    <Td className="font-medium">{n.name}</Td>
-                    <Td>
-                      <span className="flex items-center gap-1.5">
-                        <StatusDot tone={statusTone(n.status)} /> {n.status}
-                      </span>
-                    </Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{n.roles}</Td>
-                    <Td className="font-mono-app text-[11px]">{n.version}</Td>
-                    <Td className="font-mono-app">{n.internalIp ?? "—"}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{n.osImage}</Td>
-                    <Td className="font-mono-app">{n.cpu}</Td>
-                    <Td className="font-mono-app">{n.memory}</Td>
-                    <Td style={{ color: "var(--text-dim)" }}>{relativeAge(n.createdAt)}</Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
+          {tab === "nodes" &&
+            (nodesQuery.isError ? (
+              <QueryErrorBanner error={nodesQuery.error} onRetry={() => nodesQuery.refetch()} />
+            ) : (
+              <Table>
+                <Thead>
+                  <Th>Name</Th>
+                  <Th>Status</Th>
+                  <Th>Roles</Th>
+                  <Th>Version</Th>
+                  <Th>Internal IP</Th>
+                  <Th>OS</Th>
+                  <Th>CPU</Th>
+                  <Th>Memory</Th>
+                  <Th>Age</Th>
+                </Thead>
+                <tbody>
+                  {nodesQuery.isLoading ? (
+                    <TableStatusRow colSpan={9}>Loading nodes…</TableStatusRow>
+                  ) : (nodesQuery.data ?? []).length === 0 ? (
+                    <TableStatusRow colSpan={9}>No nodes found</TableStatusRow>
+                  ) : (
+                    (nodesQuery.data ?? []).map((n) => (
+                      <Tr key={n.name}>
+                        <Td className="font-medium">{n.name}</Td>
+                        <Td>
+                          <span className="flex items-center gap-1.5">
+                            <StatusDot tone={statusTone(n.status)} /> {n.status}
+                          </span>
+                        </Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{n.roles}</Td>
+                        <Td className="font-mono-app text-[11px]">{n.version}</Td>
+                        <Td className="font-mono-app">{n.internalIp ?? "—"}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{n.osImage}</Td>
+                        <Td className="font-mono-app">{n.cpu}</Td>
+                        <Td className="font-mono-app">{n.memory}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{relativeAge(n.createdAt)}</Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            ))}
         </div>
       </div>
 

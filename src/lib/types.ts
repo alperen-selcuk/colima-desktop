@@ -270,3 +270,15 @@ export interface K3sVersionsResponse {
   fetchedAt: string | null;
   error: string | null;
 }
+
+// ---- App-managed kubeconfig / host kubeconfig health (§2.1a) ----
+
+export interface HostKubeconfigHealth {
+  contextExists: boolean;
+  credentialsMatch: boolean;
+  detail: string;
+}
+
+export interface RepairResult {
+  backupPath: string;
+}

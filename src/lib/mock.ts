@@ -6,6 +6,7 @@ import type {
   Container,
   ContainerStats,
   EnvInfo,
+  HostKubeconfigHealth,
   Image,
   K3sVersionsResponse,
   K8sDeployment,
@@ -16,6 +17,7 @@ import type {
   ProfileConfig,
   ProfileConfigRaw,
   ProfileStatus,
+  RepairResult,
   Volume,
 } from "./types";
 // The real upstream Colima default template (see src-tauri/resources/colima-default.yaml
@@ -254,4 +256,26 @@ export const mockK3sVersions: K3sVersionsResponse = {
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+// Mock host kubeconfig health (§2.1a): clean by default so the dev-mode
+// Kubernetes page doesn't show the stale-credentials notice unless a
+// specific profile is exercising it (see `mockHostKubeconfigHealth` below).
+export function mockHostKubeconfigHealth(profile: string): HostKubeconfigHealth {
+  if (profile === "stale-kubeconfig") {
+    return {
+      contextExists: true,
+      credentialsMatch: false,
+      detail: "`colima` client credentials in your kubeconfig are stale (k3s rotated its certificate)",
+    };
+  }
+  return {
+    contextExists: true,
+    credentialsMatch: true,
+    detail: "`colima` credentials in your kubeconfig match the running cluster",
+  };
+}
+
+export function mockRepairHostKubeconfig(): RepairResult {
+  return { backupPath: "~/.kube/config.colima-desktop-bak-1758912345" };
 }

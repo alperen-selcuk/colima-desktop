@@ -5,6 +5,7 @@ import type {
   Container,
   ContainerStats,
   EnvInfo,
+  HostKubeconfigHealth,
   Image,
   K3sVersionsResponse,
   K8sDeployment,
@@ -22,6 +23,7 @@ import type {
   ProfileConfigRaw,
   ProfileStatus,
   PruneTarget,
+  RepairResult,
   RunOptions,
   StartOptions,
   TerminalExit,
@@ -163,6 +165,10 @@ async function mockInvoke<T>(
       return undefined as unknown as T;
     case "k8s_yaml":
       return `apiVersion: v1\nkind: ${args?.kind}\nmetadata:\n  name: ${args?.name}\n` as unknown as T;
+    case "host_kubeconfig_health":
+      return mock.mockHostKubeconfigHealth(profile) as unknown as T;
+    case "repair_host_kubeconfig":
+      return mock.mockRepairHostKubeconfig() as unknown as T;
     case "start_log_stream":
       return "mock-stream-id" as unknown as T;
     case "stop_log_stream":
@@ -407,6 +413,19 @@ export function k8sYaml(
   name: string,
 ): Promise<string> {
   return invoke<string>("k8s_yaml", { profile, kind, namespace, name });
+}
+
+/** Terminal kubectl health (§2.1a): compares the user's real `~/.kube/config`
+ * (or `$KUBECONFIG`) colima entries against the app-managed kubeconfig. */
+export function hostKubeconfigHealth(profile: string): Promise<HostKubeconfigHealth> {
+  return invoke<HostKubeconfigHealth>("host_kubeconfig_health", { profile });
+}
+
+/** Repairs ONLY the `users.<ctx>`/`clusters.<ctx>` entries in the user's real
+ * kubeconfig, after writing a timestamped backup (§2.1a). Only ever called
+ * after an explicit user confirmation. */
+export function repairHostKubeconfig(profile: string): Promise<RepairResult> {
+  return invoke<RepairResult>("repair_host_kubeconfig", { profile });
 }
 
 export function startLogStream(profile: string, target: LogTarget): Promise<string> {
