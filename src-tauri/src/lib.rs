@@ -10,6 +10,7 @@ mod env;
 mod exec;
 mod k3s;
 mod k8s;
+mod kubeconfig;
 mod logs;
 mod pty;
 mod state;
@@ -65,6 +66,8 @@ pub fn run() {
             k8s::k8s_scale,
             k8s::k8s_restart_deployment,
             k8s::k8s_yaml,
+            kubeconfig::host_kubeconfig_health,
+            kubeconfig::repair_host_kubeconfig,
             logs::start_log_stream,
             logs::stop_log_stream,
             pty::terminal_open,

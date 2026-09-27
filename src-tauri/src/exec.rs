@@ -21,14 +21,15 @@ pub struct OpLog {
     pub line: String,
 }
 
-/// Build a [`Command`] with a clean environment: `DOCKER_HOST` and
-/// `DOCKER_CONTEXT` removed so nothing can override the explicit `-H`
-/// socket / `--context` flags we always pass.
+/// Build a [`Command`] with a clean environment: `DOCKER_HOST`,
+/// `DOCKER_CONTEXT`, and `KUBECONFIG` removed so nothing can override the
+/// explicit `-H` socket / `--context`/`--kubeconfig` flags we always pass.
 fn base_command(bin: &str, args: &[&str]) -> Command {
     let mut cmd = Command::new(bin);
     cmd.args(args);
     cmd.env_remove("DOCKER_HOST");
     cmd.env_remove("DOCKER_CONTEXT");
+    cmd.env_remove("KUBECONFIG");
     cmd.stdin(Stdio::null());
     cmd
 }

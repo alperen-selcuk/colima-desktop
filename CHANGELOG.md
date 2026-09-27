@@ -19,6 +19,13 @@ All notable changes to Colima Desktop are documented in this file.
 
 ### Fixed
 
+- Kubernetes views were empty when `~/.kube/config` held stale credentials for the `colima` context (k3s
+  rotates its client certificate; colima only rewrites the kubeconfig when the VM IP changes). The app now uses
+  its own kubeconfig fetched from the VM (mode 0600, refreshed automatically on auth errors) and never reads
+  `~/.kube/config` for colima clusters. Kubernetes query errors are now shown with a Retry button instead of
+  empty tables.
+- New notice when terminal `kubectl --context colima` would fail, with an opt-in **Fix** that backs up
+  `~/.kube/config` and updates only the `colima` user/cluster entries.
 - The quick Start dialog defaulted Kubernetes to `v1.30.0`, which is not a valid k3s version.
 
 - Homebrew cask passes `brew audit --strict` and `brew style`; install docs include the `brew trust` step

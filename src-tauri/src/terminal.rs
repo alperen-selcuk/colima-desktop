@@ -33,12 +33,23 @@ pub enum TerminalTarget {
 
 /// Resolve the program and argv for `target`. `profile` is required for
 /// `vm`/`container`/`pod` targets (validated by the caller) and ignored for
-/// `host`.
-pub async fn build_command(
+/// `host`. `ensure_fresh_kubeconfig` is called for the `pod` target only, to
+/// guarantee the app-managed kubeconfig is fresh before spawning (§2.1a) —
+/// PTY sessions can't route through [`crate::kubeconfig::kubectl`]'s
+/// retry-on-auth-error path the way one-shot commands do, so freshness must
+/// be guaranteed up front instead. Taking it as an injected async closure
+/// (rather than a concrete `AppHandle`) keeps this function unit-testable
+/// without spinning up a mock Tauri app.
+pub async fn build_command<F, Fut>(
     state: &AppState,
     profile: Option<&str>,
     target: &TerminalTarget,
-) -> Result<(String, Vec<String>), String> {
+    ensure_fresh_kubeconfig: F,
+) -> Result<(String, Vec<String>), String>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<std::path::PathBuf, String>>,
+{
     match target {
         TerminalTarget::Host => Ok((host_shell(), vec!["-l".to_string()])),
         TerminalTarget::Vm => {
@@ -68,7 +79,16 @@ pub async fn build_command(
             container,
         } => {
             let profile = require_profile(profile)?;
-            Ok(("kubectl".to_string(), exec_pod_args(profile, namespace, pod, container.as_deref())))
+            let kubeconfig_path = ensure_fresh_kubeconfig(profile.to_string()).await?;
+            let ctx = crate::validate::kube_context(profile);
+            let mut args = vec![
+                "--kubeconfig".to_string(),
+                kubeconfig_path.to_string_lossy().to_string(),
+                "--context".to_string(),
+                ctx,
+            ];
+            args.extend(exec_pod_args(namespace, pod, container.as_deref()));
+            Ok(("kubectl".to_string(), args))
         }
     }
 }
@@ -107,10 +127,17 @@ pub fn host_shell() -> String {
 mod tests {
     use super::*;
 
+    /// Stub `ensure_fresh_kubeconfig` for tests: never actually touches
+    /// colima/kubectl, just returns a fixed fake path so `pod` target tests
+    /// can assert on the resulting argv.
+    fn stub_ensure_fresh(profile: String) -> std::future::Ready<Result<std::path::PathBuf, String>> {
+        std::future::ready(Ok(std::path::PathBuf::from(format!("/fake/kube/{profile}.yaml"))))
+    }
+
     #[tokio::test]
     async fn host_target_ignores_profile_and_runs_login_shell() {
         let state = AppState::default();
-        let (program, args) = build_command(&state, None, &TerminalTarget::Host).await.unwrap();
+        let (program, args) = build_command(&state, None, &TerminalTarget::Host, stub_ensure_fresh).await.unwrap();
         assert_eq!(program, host_shell());
         assert_eq!(args, vec!["-l".to_string()]);
     }
@@ -118,14 +145,15 @@ mod tests {
     #[tokio::test]
     async fn vm_target_requires_profile() {
         let state = AppState::default();
-        let err = build_command(&state, None, &TerminalTarget::Vm).await.unwrap_err();
+        let err = build_command(&state, None, &TerminalTarget::Vm, stub_ensure_fresh).await.unwrap_err();
         assert!(err.contains("profile is required"));
     }
 
     #[tokio::test]
     async fn vm_target_builds_colima_ssh() {
         let state = AppState::default();
-        let (program, args) = build_command(&state, Some("default"), &TerminalTarget::Vm).await.unwrap();
+        let (program, args) =
+            build_command(&state, Some("default"), &TerminalTarget::Vm, stub_ensure_fresh).await.unwrap();
         assert_eq!(program, "colima");
         assert_eq!(args, vec!["ssh", "-p", "default"]);
     }
@@ -134,7 +162,7 @@ mod tests {
     async fn container_target_requires_profile() {
         let state = AppState::default();
         let target = TerminalTarget::Container { id: "abc123".to_string() };
-        let err = build_command(&state, None, &target).await.unwrap_err();
+        let err = build_command(&state, None, &target, stub_ensure_fresh).await.unwrap_err();
         assert!(err.contains("profile is required"));
     }
 
@@ -143,7 +171,7 @@ mod tests {
         let state = AppState::default();
         state.cache_docker_socket("default", "unix:///tmp/docker.sock".to_string());
         let target = TerminalTarget::Container { id: "abc123".to_string() };
-        let (program, args) = build_command(&state, Some("default"), &target).await.unwrap();
+        let (program, args) = build_command(&state, Some("default"), &target, stub_ensure_fresh).await.unwrap();
         assert_eq!(program, "docker");
         assert_eq!(
             args,
@@ -159,25 +187,26 @@ mod tests {
             pod: "pod-1".to_string(),
             container: None,
         };
-        let err = build_command(&state, None, &target).await.unwrap_err();
+        let err = build_command(&state, None, &target, stub_ensure_fresh).await.unwrap_err();
         assert!(err.contains("profile is required"));
     }
 
     #[tokio::test]
-    async fn pod_target_builds_kubectl_exec_with_context_and_shell_fallback() {
+    async fn pod_target_builds_kubectl_exec_with_kubeconfig_context_and_shell_fallback() {
         let state = AppState::default();
         let target = TerminalTarget::Pod {
             namespace: "ns".to_string(),
             pod: "pod-1".to_string(),
             container: Some("app".to_string()),
         };
-        let (program, args) = build_command(&state, Some("default"), &target).await.unwrap();
+        let (program, args) =
+            build_command(&state, Some("default"), &target, stub_ensure_fresh).await.unwrap();
         assert_eq!(program, "kubectl");
         assert_eq!(
             args,
             vec![
-                "--context", "colima", "exec", "-it", "-n", "ns", "pod-1", "-c", "app", "--", "sh", "-c",
-                SHELL_FALLBACK,
+                "--kubeconfig", "/fake/kube/default.yaml", "--context", "colima", "exec", "-it", "-n", "ns",
+                "pod-1", "-c", "app", "--", "sh", "-c", SHELL_FALLBACK,
             ]
         );
     }

@@ -1,6 +1,7 @@
 //! Shared managed state: per-profile lifecycle locks, docker socket cache,
 //! the log-stream registry, and the PTY terminal session registry.
 
+use crate::kubeconfig::KubeconfigState;
 use crate::pty::Session as PtySession;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -15,6 +16,8 @@ pub struct AppState {
     docker_sockets: Mutex<HashMap<String, (String, Instant)>>,
     pub log_streams: Mutex<HashMap<String, Child>>,
     pub pty_sessions: Mutex<HashMap<String, PtySession>>,
+    /// Per-session "fresh" flags for the app-managed kubeconfig (§2.1a).
+    pub kubeconfig: KubeconfigState,
 }
 
 /// 30s cache TTL for resolved docker sockets, per §2.2.

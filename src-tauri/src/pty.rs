@@ -54,16 +54,23 @@ fn apply_pty_env(cmd: &mut CommandBuilder) {
     }
     cmd.env_remove("DOCKER_HOST");
     cmd.env_remove("DOCKER_CONTEXT");
+    cmd.env_remove("KUBECONFIG");
 }
 
 /// Build the `portable_pty::CommandBuilder` for `target`, applying cwd
 /// (host target only, per §4) and the shared env overrides.
 async fn build_pty_command(
+    app: &AppHandle,
     state: &AppState,
     profile: Option<&str>,
     target: &TerminalTarget,
 ) -> Result<CommandBuilder, String> {
-    let (program, args) = build_command(state, profile, target).await?;
+    let app = app.clone();
+    let (program, args) = build_command(state, profile, target, move |profile| {
+        let app = app.clone();
+        async move { crate::kubeconfig::ensure_fresh(&app, &profile).await }
+    })
+    .await?;
     let mut cmd = CommandBuilder::new(program);
     cmd.args(args);
     if matches!(target, TerminalTarget::Host) {
@@ -87,7 +94,7 @@ pub async fn terminal_open(
     if let Some(p) = &profile {
         validate_profile_name(p)?;
     }
-    let cmd = build_pty_command(&state, profile.as_deref(), &target).await?;
+    let cmd = build_pty_command(&app, &state, profile.as_deref(), &target).await?;
 
     let pty_system = native_pty_system();
     let pair = pty_system

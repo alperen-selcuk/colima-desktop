@@ -31,6 +31,7 @@ const KNOWN_DIRS: &[&str] = &[
 ];
 
 const PATH_MARKER: &str = "__PATH__";
+const KUBECONFIG_MARKER: &str = "__KUBECONFIG__";
 
 /// Expand a leading `~` to `home`, if given. Pure function so tests can
 /// inject a home directory instead of mutating the process-global `HOME`
@@ -44,16 +45,39 @@ fn expand_home_with(path: &str, home: Option<&std::ffi::OsStr>) -> PathBuf {
     PathBuf::from(path)
 }
 
-/// Fetch the user's login-interactive shell `PATH` by running
-/// `$SHELL -ilc 'printf "__PATH__%s__PATH__" "$PATH"'` with a 3s timeout.
-/// Returns `None` on any failure (missing `$SHELL`, timeout, parse failure).
-fn shell_path() -> Option<String> {
+/// Extract the text between a pair of `marker` occurrences in `haystack`
+/// (as printed by e.g. `printf "__PATH__%s__PATH__" "$PATH"`), or `None` if
+/// the marker doesn't appear (twice).
+fn extract_between_markers(haystack: &str, marker: &str) -> Option<String> {
+    let start = haystack.find(marker)? + marker.len();
+    let rest = &haystack[start..];
+    let end = rest.find(marker)?;
+    Some(rest[..end].to_string())
+}
+
+/// Result of resolving the user's login-interactive shell environment: its
+/// `PATH` and (if set) its `KUBECONFIG`, fetched in a single shell
+/// invocation so GUI apps (which inherit neither) can resolve both cheaply.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ShellEnv {
+    path: Option<String>,
+    kubeconfig: Option<String>,
+}
+
+/// Fetch the user's login-interactive shell `PATH` and `KUBECONFIG` by
+/// running a single `$SHELL -ilc '...'` invocation with a 3s timeout, each
+/// wrapped in its own pair of markers. Returns defaults (`None`/`None`) on
+/// any failure (missing `$SHELL`, timeout, parse failure).
+fn shell_env() -> ShellEnv {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let (tx, rx) = std::sync::mpsc::channel();
     let shell_clone = shell.clone();
     let handle = std::thread::spawn(move || {
         let output = std::process::Command::new(&shell_clone)
-            .args(["-ilc", "printf \"__PATH__%s__PATH__\" \"$PATH\""])
+            .args([
+                "-ilc",
+                "printf \"__PATH__%s__PATH____KUBECONFIG__%s__KUBECONFIG__\" \"$PATH\" \"$KUBECONFIG\"",
+            ])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -61,15 +85,17 @@ fn shell_path() -> Option<String> {
         let _ = tx.send(output);
     });
 
-    let output = rx.recv_timeout(Duration::from_secs(3)).ok()?.ok()?;
+    let Some(Ok(output)) = rx.recv_timeout(Duration::from_secs(3)).ok() else {
+        return ShellEnv::default();
+    };
     // don't block shutdown on a hung shell; detach the thread if it's slow.
     let _ = handle;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let start = stdout.find(PATH_MARKER)? + PATH_MARKER.len();
-    let rest = &stdout[start..];
-    let end = rest.find(PATH_MARKER)?;
-    Some(rest[..end].to_string())
+    ShellEnv {
+        path: extract_between_markers(&stdout, PATH_MARKER),
+        kubeconfig: extract_between_markers(&stdout, KUBECONFIG_MARKER).filter(|s| !s.is_empty()),
+    }
 }
 
 /// Merge the shell `PATH` (if resolvable) with [`KNOWN_DIRS`] (expanded
@@ -106,10 +132,20 @@ fn merge_path(shell_path: Option<&str>) -> String {
 }
 
 /// Resolve and set the process `PATH` from the user's shell plus known
-/// install directories. Must run before any subprocess is spawned.
+/// install directories, and (if the shell has one set) the process
+/// `KUBECONFIG` — GUI apps on macOS inherit neither, but `kubeconfig.rs`'s
+/// host-kubeconfig health check needs the user's real `KUBECONFIG` to find
+/// their `~/.kube/config`. Fetched in one shell invocation (`shell_env`).
+/// Every kubectl child command explicitly strips `KUBECONFIG` from its own
+/// env regardless (§2.1a), so setting it here only affects that one lookup,
+/// never what kubectl itself sees. Must run before any subprocess is
+/// spawned.
 pub fn fix_path() {
-    let resolved = merge_path(shell_path().as_deref());
-    std::env::set_var("PATH", resolved);
+    let env = shell_env();
+    std::env::set_var("PATH", merge_path(env.path.as_deref()));
+    if let Some(kubeconfig) = env.kubeconfig {
+        std::env::set_var("KUBECONFIG", kubeconfig);
+    }
 }
 
 /// Environment/tooling info surfaced to the frontend.
@@ -201,9 +237,30 @@ mod tests {
     #[test]
     fn parses_path_between_markers() {
         let stdout = format!("{}/foo:/bar{}", PATH_MARKER, PATH_MARKER);
-        let start = stdout.find(PATH_MARKER).unwrap() + PATH_MARKER.len();
-        let rest = &stdout[start..];
-        let end = rest.find(PATH_MARKER).unwrap();
-        assert_eq!(&rest[..end], "/foo:/bar");
+        assert_eq!(extract_between_markers(&stdout, PATH_MARKER).as_deref(), Some("/foo:/bar"));
+    }
+
+    #[test]
+    fn extract_between_markers_parses_both_path_and_kubeconfig() {
+        let stdout = format!(
+            "{}/foo:/bar{}{}/Users/x/.kube/config{}",
+            PATH_MARKER, PATH_MARKER, KUBECONFIG_MARKER, KUBECONFIG_MARKER
+        );
+        assert_eq!(extract_between_markers(&stdout, PATH_MARKER).as_deref(), Some("/foo:/bar"));
+        assert_eq!(
+            extract_between_markers(&stdout, KUBECONFIG_MARKER).as_deref(),
+            Some("/Users/x/.kube/config")
+        );
+    }
+
+    #[test]
+    fn extract_between_markers_missing_marker_is_none() {
+        assert_eq!(extract_between_markers("no markers here", PATH_MARKER), None);
+    }
+
+    #[test]
+    fn extract_between_markers_empty_value() {
+        let stdout = format!("{}{}", KUBECONFIG_MARKER, KUBECONFIG_MARKER);
+        assert_eq!(extract_between_markers(&stdout, KUBECONFIG_MARKER).as_deref(), Some(""));
     }
 }

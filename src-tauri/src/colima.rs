@@ -380,12 +380,14 @@ pub async fn start_profile(
     validate_profile_name(&profile)?;
     let _guard = state.try_lock_profile(&profile)?;
     state.invalidate_docker_socket(&profile);
+    state.kubeconfig.invalidate(&profile);
 
     let args = start_args(&profile, &options);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let result = exec::run_streaming(&app, "colima", &arg_refs, &profile, "start").await;
 
     state.invalidate_docker_socket(&profile);
+    state.kubeconfig.invalidate(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -408,6 +410,7 @@ pub async fn stop_profile(
     let result = exec::run_streaming(&app, "colima", &arg_refs, &profile, "stop").await;
 
     state.invalidate_docker_socket(&profile);
+    state.kubeconfig.invalidate(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -425,6 +428,7 @@ pub async fn restart_profile(
     let result = exec::run_streaming(&app, "colima", &args, &profile, "restart").await;
 
     state.invalidate_docker_socket(&profile);
+    state.kubeconfig.invalidate(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -442,6 +446,7 @@ pub async fn delete_profile(
     let result = exec::run_streaming(&app, "colima", &args, &profile, "delete").await;
 
     state.invalidate_docker_socket(&profile);
+    state.kubeconfig.invalidate(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -519,6 +524,7 @@ pub async fn kubernetes_action(
         exec::run_streaming(&app, "colima", &args, &profile, &op).await
     };
 
+    state.kubeconfig.invalidate(&profile);
     emit_profiles_changed(&app);
     result
 }

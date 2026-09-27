@@ -4,6 +4,7 @@
 //! the stream's exit as `log-end`.
 
 use crate::colima::resolve_docker_socket;
+use crate::kubeconfig;
 use crate::state::AppState;
 use crate::validate::{kube_context, validate_profile_name};
 use serde::{Deserialize, Serialize};
@@ -47,6 +48,7 @@ fn base_command(bin: &str, args: &[String]) -> Command {
     cmd.args(args);
     cmd.env_remove("DOCKER_HOST");
     cmd.env_remove("DOCKER_CONTEXT");
+    cmd.env_remove("KUBECONFIG");
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -54,8 +56,12 @@ fn base_command(bin: &str, args: &[String]) -> Command {
     cmd
 }
 
-/// Build the argv (bin + args) for a given log target.
+/// Build the argv (bin + args) for a given log target. For a pod target,
+/// ensures the app-managed kubeconfig is fresh first (§2.1a) — a long-lived
+/// `kubectl logs -f` stream can't be retried mid-stream the way a one-shot
+/// command can, so the file must already be current before it's spawned.
 async fn build_log_command(
+    app: &AppHandle,
     state: &AppState,
     profile: &str,
     target: &LogTarget,
@@ -82,8 +88,11 @@ async fn build_log_command(
             container,
             tail,
         } => {
+            let kubeconfig_path = kubeconfig::ensure_fresh(app, profile).await?;
             let ctx = kube_context(profile);
             let mut args = vec![
+                "--kubeconfig".to_string(),
+                kubeconfig_path.to_string_lossy().to_string(),
                 "--context".to_string(),
                 ctx,
                 "logs".to_string(),
@@ -110,7 +119,7 @@ pub async fn start_log_stream(
     target: LogTarget,
 ) -> Result<String, String> {
     validate_profile_name(&profile)?;
-    let (bin, args) = build_log_command(&state, &profile, &target).await?;
+    let (bin, args) = build_log_command(&app, &state, &profile, &target).await?;
 
     let mut cmd = base_command(&bin, &args);
     let mut child = cmd.spawn().map_err(|e| {

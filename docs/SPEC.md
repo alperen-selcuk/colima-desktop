@@ -42,6 +42,26 @@ src-tauri/                                                     (backend owner)
 1. **Kubernetes context is ALWAYS explicit.** Every `kubectl` call passes `--context <ctx>` where
    `ctx = "colima"` for profile `default`, else `"colima-" + profile`. Never call `kubectl config use-context`,
    never read or rely on `current-context`. The user's kubeconfig contains production AKS clusters.
+1a. **App-managed kubeconfig (v0.1.2+).** kubectl never reads the user's `~/.kube/config` for colima clusters. colima only
+   rewrites `~/.kube/config` when the VM IP changes, so after k3s rotates its client certificate (yearly, on restart) or the
+   cluster is recreated, the stored `colima` credentials go stale ("the server has asked for the client to provide
+   credentials"). Instead the backend fetches `/etc/rancher/k3s/k3s.yaml` via `colima ssh -p <p> -- sudo cat /etc/rancher/k3s/k3s.yaml`,
+   renames `default` → the kube context id (like colima does), replaces `https://127.0.0.1:` with `https://<ip>:` when
+   `colima status` reports a non-empty, non-127.0.0.1 `ip_address`, and writes it atomically with mode 0600 to
+   `<app_data_dir>/kube/<profile>.yaml`. Every kubectl call (lists, describe, yaml, scale, logs streams, PTY exec) runs with
+   `--kubeconfig <that file> --context <ctx>` and `KUBECONFIG` removed from the child env. The file is (re)fetched on first use
+   per profile per app session, after any `kubernetes_action`/lifecycle op, and once more (then retry the command once) when
+   kubectl fails with an auth/cert error (`provide credentials`, `Unauthorized`, `x509`, `certificate`). Missing file / VM not
+   running → friendly error "Kubernetes is not reachable: <reason>". kubectl stderr noise lines (`E0927 … memcache.go …`) are
+   stripped from error messages; keep the final meaningful line(s).
+   **Terminal kubectl health:** command `host_kubeconfig_health(profile) -> { contextExists, credentialsMatch, detail }`
+   compares SHA-256 of `users.<ctx>.client-certificate-data` and `clusters.<ctx>.certificate-authority-data` in the user's
+   kubeconfig (first path of `KUBECONFIG` env from the login shell, else `~/.kube/config`; read via `kubectl config view --raw
+   --kubeconfig <path> -o jsonpath=...` filtered to the colima entries only) with the app-managed file.
+   `repair_host_kubeconfig(profile)` (only on explicit user click, after a confirm dialog): back up the file to
+   `<path>.colima-desktop-bak-<unix-ts>`, then update ONLY `users.<ctx>` client-certificate-data/client-key-data and
+   `clusters.<ctx>` certificate-authority-data/server via `kubectl config set ... --kubeconfig <path>` (`--set-raw-bytes=false`
+   with base64 data). Never touch any other user/cluster/context or current-context.
 2. **Docker endpoint is ALWAYS explicit.** Every `docker` call passes `-H <docker_socket>` where the socket
    comes from `colima status --json -p <profile>` field `docker_socket` (e.g. `unix:///Users/x/.colima/default/docker.sock`).
    Fallback if status fails: `unix://$COLIMA_HOME_or_~/.colima/<profile>/docker.sock`. Cache per profile for 30s.

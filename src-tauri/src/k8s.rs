@@ -2,14 +2,11 @@
 //! `--context <ctx>` (§2.1) derived from the profile name; never touches
 //! `current-context`.
 
-use crate::exec;
-use crate::validate::{kube_context, validate_profile_name};
+use crate::kubeconfig;
+use crate::validate::validate_profile_name;
 use serde::Serialize;
 use serde_json::Value;
-
-fn kubectl_base_args(context: &str) -> Vec<String> {
-    vec!["--context".to_string(), context.to_string()]
-}
+use tauri::AppHandle;
 
 fn ns_args(namespace: &Option<String>) -> Vec<String> {
     match namespace {
@@ -356,14 +353,18 @@ fn node_from_json(node: &Value) -> K8sNode {
 
 // ---------- Commands ----------
 
-#[tauri::command]
-pub async fn k8s_namespaces(profile: String) -> Result<Vec<String>, String> {
-    validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let args = kubectl_base_args(&ctx);
-    let mut arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    arg_refs.extend(["get", "ns", "-o", "json"]);
-    let stdout = exec::run("kubectl", &arg_refs).await?;
+/// Fetch + parse namespaces given an already-resolved kubectl runner
+/// closure. Factored out so both the tauri command (which routes through
+/// [`kubeconfig::kubectl`], with freshness tracking and retry) and the live
+/// test (which has a concrete kubeconfig path and no `AppHandle`) share the
+/// exact same parsing logic.
+async fn namespaces_via<F, Fut>(run: F) -> Result<Vec<String>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let args = vec!["get".to_string(), "ns".to_string(), "-o".to_string(), "json".to_string()];
+    let stdout = run(args).await?;
     let items = items_from_list(&stdout)?;
     Ok(items
         .iter()
@@ -371,70 +372,95 @@ pub async fn k8s_namespaces(profile: String) -> Result<Vec<String>, String> {
         .collect())
 }
 
-#[tauri::command]
-pub async fn k8s_pods(profile: String, namespace: Option<String>) -> Result<Vec<K8sPod>, String> {
-    validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.push("get".into());
-    args.push("pods".into());
-    args.extend(ns_args(&namespace));
+async fn pods_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sPod>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "pods".to_string()];
+    args.extend(ns_args(namespace));
     args.push("-o".into());
     args.push("json".into());
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let stdout = exec::run("kubectl", &arg_refs).await?;
+    let stdout = run(args).await?;
     let items = items_from_list(&stdout)?;
     Ok(items.iter().map(pod_from_json).collect())
 }
 
-#[tauri::command]
-pub async fn k8s_deployments(
-    profile: String,
-    namespace: Option<String>,
-) -> Result<Vec<K8sDeployment>, String> {
-    validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.push("get".into());
-    args.push("deployments".into());
-    args.extend(ns_args(&namespace));
+async fn deployments_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sDeployment>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "deployments".to_string()];
+    args.extend(ns_args(namespace));
     args.push("-o".into());
     args.push("json".into());
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let stdout = exec::run("kubectl", &arg_refs).await?;
+    let stdout = run(args).await?;
     let items = items_from_list(&stdout)?;
     Ok(items.iter().map(deployment_from_json).collect())
 }
 
-#[tauri::command]
-pub async fn k8s_services(
-    profile: String,
-    namespace: Option<String>,
-) -> Result<Vec<K8sService>, String> {
-    validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.push("get".into());
-    args.push("services".into());
-    args.extend(ns_args(&namespace));
+async fn services_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sService>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "services".to_string()];
+    args.extend(ns_args(namespace));
     args.push("-o".into());
     args.push("json".into());
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let stdout = exec::run("kubectl", &arg_refs).await?;
+    let stdout = run(args).await?;
     let items = items_from_list(&stdout)?;
     Ok(items.iter().map(service_from_json).collect())
 }
 
-#[tauri::command]
-pub async fn k8s_nodes(profile: String) -> Result<Vec<K8sNode>, String> {
-    validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.extend(["get".into(), "nodes".into(), "-o".into(), "json".into()]);
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let stdout = exec::run("kubectl", &arg_refs).await?;
+async fn nodes_via<F, Fut>(run: F) -> Result<Vec<K8sNode>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let args = vec!["get".to_string(), "nodes".to_string(), "-o".to_string(), "json".to_string()];
+    let stdout = run(args).await?;
     let items = items_from_list(&stdout)?;
     Ok(items.iter().map(node_from_json).collect())
+}
+
+#[tauri::command]
+pub async fn k8s_namespaces(app: AppHandle, profile: String) -> Result<Vec<String>, String> {
+    validate_profile_name(&profile)?;
+    namespaces_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }).await
+}
+
+#[tauri::command]
+pub async fn k8s_pods(app: AppHandle, profile: String, namespace: Option<String>) -> Result<Vec<K8sPod>, String> {
+    validate_profile_name(&profile)?;
+    pods_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[tauri::command]
+pub async fn k8s_deployments(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sDeployment>, String> {
+    validate_profile_name(&profile)?;
+    deployments_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[tauri::command]
+pub async fn k8s_services(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sService>, String> {
+    validate_profile_name(&profile)?;
+    services_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[tauri::command]
+pub async fn k8s_nodes(app: AppHandle, profile: String) -> Result<Vec<K8sNode>, String> {
+    validate_profile_name(&profile)?;
+    nodes_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }).await
 }
 
 fn validate_kind(kind: &str) -> Result<&'static str, String> {
@@ -449,6 +475,7 @@ fn validate_kind(kind: &str) -> Result<&'static str, String> {
 
 #[tauri::command]
 pub async fn k8s_describe(
+    app: AppHandle,
     profile: String,
     kind: String,
     namespace: Option<String>,
@@ -456,76 +483,59 @@ pub async fn k8s_describe(
 ) -> Result<String, String> {
     validate_profile_name(&profile)?;
     let kind = validate_kind(&kind)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.push("describe".into());
-    args.push(kind.into());
-    args.push(name);
+    let mut args = vec!["describe".to_string(), kind.to_string(), name];
     if let Some(ns) = &namespace {
         args.push("-n".into());
         args.push(ns.clone());
     }
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    exec::run("kubectl", &arg_refs).await
+    kubeconfig::kubectl(&app, &profile, &args).await
 }
 
 #[tauri::command]
-pub async fn k8s_delete_pod(profile: String, namespace: String, name: String) -> Result<(), String> {
+pub async fn k8s_delete_pod(app: AppHandle, profile: String, namespace: String, name: String) -> Result<(), String> {
     validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.extend([
-        "delete".into(),
-        "pod".into(),
+    let args = vec![
+        "delete".to_string(),
+        "pod".to_string(),
         name,
-        "-n".into(),
+        "-n".to_string(),
         namespace,
-        "--wait=false".into(),
-    ]);
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    exec::run("kubectl", &arg_refs).await.map(|_| ())
+        "--wait=false".to_string(),
+    ];
+    kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
 
 #[tauri::command]
 pub async fn k8s_scale(
+    app: AppHandle,
     profile: String,
     namespace: String,
     name: String,
     replicas: u32,
 ) -> Result<(), String> {
     validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
     let target = format!("deployment/{name}");
     let replicas_flag = format!("--replicas={replicas}");
-    let mut args = kubectl_base_args(&ctx);
-    args.extend([
-        "scale".into(),
-        target,
-        replicas_flag,
-        "-n".into(),
-        namespace,
-    ]);
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    exec::run("kubectl", &arg_refs).await.map(|_| ())
+    let args = vec!["scale".to_string(), target, replicas_flag, "-n".to_string(), namespace];
+    kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
 
 #[tauri::command]
 pub async fn k8s_restart_deployment(
+    app: AppHandle,
     profile: String,
     namespace: String,
     name: String,
 ) -> Result<(), String> {
     validate_profile_name(&profile)?;
-    let ctx = kube_context(&profile);
     let target = format!("deployment/{name}");
-    let mut args = kubectl_base_args(&ctx);
-    args.extend(["rollout".into(), "restart".into(), target, "-n".into(), namespace]);
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    exec::run("kubectl", &arg_refs).await.map(|_| ())
+    let args = vec!["rollout".to_string(), "restart".to_string(), target, "-n".to_string(), namespace];
+    kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
 
 #[tauri::command]
 pub async fn k8s_yaml(
+    app: AppHandle,
     profile: String,
     kind: String,
     namespace: Option<String>,
@@ -533,19 +543,14 @@ pub async fn k8s_yaml(
 ) -> Result<String, String> {
     validate_profile_name(&profile)?;
     let kind = validate_kind(&kind)?;
-    let ctx = kube_context(&profile);
-    let mut args = kubectl_base_args(&ctx);
-    args.push("get".into());
-    args.push(kind.into());
-    args.push(name);
+    let mut args = vec!["get".to_string(), kind.to_string(), name];
     if let Some(ns) = &namespace {
         args.push("-n".into());
         args.push(ns.clone());
     }
     args.push("-o".into());
     args.push("yaml".into());
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    exec::run("kubectl", &arg_refs).await
+    kubeconfig::kubectl(&app, &profile, &args).await
 }
 
 /// Shell one-liner used for interactive shells in a container/pod: prefer
@@ -553,21 +558,15 @@ pub async fn k8s_yaml(
 /// kubectl exec command builders in [`crate::pty`].
 pub const SHELL_FALLBACK: &str = "command -v bash >/dev/null && exec bash || exec sh";
 
-/// Build the `kubectl --context c exec -it -n ns pod [-c c] -- sh -c
-/// '<SHELL_FALLBACK>'` argv (bin excluded) for a pod target; kept here so
-/// context derivation stays in one place. Used by [`crate::pty`] to open an
-/// in-app terminal session against a pod.
-pub fn exec_pod_args(profile: &str, namespace: &str, pod: &str, container: Option<&str>) -> Vec<String> {
-    let ctx = kube_context(profile);
-    let mut args = vec![
-        "--context".to_string(),
-        ctx,
-        "exec".to_string(),
-        "-it".to_string(),
-        "-n".to_string(),
-        namespace.to_string(),
-        pod.to_string(),
-    ];
+/// Build the `exec -it -n ns pod [-c c] -- sh -c '<SHELL_FALLBACK>'` argv
+/// (bin and `--kubeconfig`/`--context` excluded — the caller, [`crate::pty`],
+/// prepends those via [`crate::kubeconfig::kubectl_prefix_args`] after
+/// ensuring the app-managed kubeconfig is fresh, since PTY spawning can't
+/// route through the [`crate::kubeconfig::kubectl`] retry-on-auth-error
+/// helper the way one-shot commands do). Used to open an in-app terminal
+/// session against a pod.
+pub fn exec_pod_args(namespace: &str, pod: &str, container: Option<&str>) -> Vec<String> {
+    let mut args = vec!["exec".to_string(), "-it".to_string(), "-n".to_string(), namespace.to_string(), pod.to_string()];
     if let Some(c) = container {
         args.push("-c".to_string());
         args.push(c.to_string());
@@ -582,6 +581,7 @@ pub fn exec_pod_args(profile: &str, namespace: &str, pod: &str, container: Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::validate::kube_context;
     use serde_json::json;
 
     #[test]
@@ -789,23 +789,75 @@ mod tests {
     }
 
     #[test]
-    fn exec_pod_args_includes_context_and_container() {
-        let args = exec_pod_args("default", "ns", "pod-1", Some("app"));
-        assert_eq!(
-            args,
-            vec![
-                "--context", "colima", "exec", "-it", "-n", "ns", "pod-1", "-c", "app", "--", "sh", "-c",
-                SHELL_FALLBACK,
-            ]
-        );
+    fn exec_pod_args_includes_container() {
+        let args = exec_pod_args("ns", "pod-1", Some("app"));
+        assert_eq!(args, vec!["exec", "-it", "-n", "ns", "pod-1", "-c", "app", "--", "sh", "-c", SHELL_FALLBACK]);
     }
 
     #[test]
     fn exec_pod_args_no_container() {
-        let args = exec_pod_args("rosetta", "ns", "pod-1", None);
-        assert_eq!(
-            args,
-            vec!["--context", "colima-rosetta", "exec", "-it", "-n", "ns", "pod-1", "--", "sh", "-c", SHELL_FALLBACK]
-        );
+        let args = exec_pod_args("ns", "pod-1", None);
+        assert_eq!(args, vec!["exec", "-it", "-n", "ns", "pod-1", "--", "sh", "-c", SHELL_FALLBACK]);
+    }
+
+    /// Live diagnostic against this machine's running colima k3s (profile
+    /// `default`, context `colima`). Exercises the exact same
+    /// fetch-kubeconfig -> parse-JSON pipeline the app uses, just without a
+    /// Tauri `AppHandle`: fetches the app-managed kubeconfig into a scratch
+    /// directory via [`kubeconfig::fetch_and_write`] (the same logic
+    /// `kubeconfig::ensure_fresh`/`kubectl` uses under a real app), then runs
+    /// through [`kubeconfig::run_kubectl_once`] and the same `*_via` parsing
+    /// helpers the tauri commands call. Ignored by default; run with
+    /// `cargo test live_colima_k8s_listing -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_colima_k8s_listing() {
+        let profile = "default";
+        let ctx = kube_context(profile);
+        let scratch_dir = std::env::temp_dir().join(format!(
+            "colima-desktop-live-k8s-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&scratch_dir).unwrap();
+        let kubeconfig_path = kubeconfig::fetch_and_write(&scratch_dir, profile)
+            .await
+            .expect("fetch_and_write should succeed against a running colima k3s VM");
+
+        let run = |args: Vec<String>| {
+            let path = kubeconfig_path.clone();
+            let ctx = ctx.clone();
+            async move { kubeconfig::run_kubectl_once(&path, &ctx, &args).await }
+        };
+
+        println!("namespaces: {:?}", namespaces_via(run).await.map(|v| v.len()));
+        match pods_via(run, &None).await {
+            Ok(v) => {
+                println!(
+                    "pods: {} e.g. {:?}",
+                    v.len(),
+                    v.iter().take(3).map(|x| format!("{}/{} {}", x.namespace, x.name, x.status)).collect::<Vec<_>>()
+                );
+                assert!(!v.is_empty(), "expected at least one pod on this running cluster");
+            }
+            Err(e) => panic!("pods ERROR: {e}"),
+        }
+        match deployments_via(run, &None).await {
+            Ok(v) => println!("deployments: {}", v.len()),
+            Err(e) => println!("deployments ERROR: {e}"),
+        }
+        match services_via(run, &None).await {
+            Ok(v) => println!("services: {}", v.len()),
+            Err(e) => println!("services ERROR: {e}"),
+        }
+        match nodes_via(run).await {
+            Ok(v) => println!(
+                "nodes: {:?}",
+                v.iter().map(|n| format!("{} {} {}", n.name, n.status, n.version)).collect::<Vec<_>>()
+            ),
+            Err(e) => println!("nodes ERROR: {e}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&scratch_dir);
     }
 }
