@@ -35,15 +35,15 @@ pub struct ProfileConfigRaw {
     pub exists: bool,
 }
 
-/// The profile's own config file path: `<colimaHome>/<profile>/colima.yaml`.
-fn profile_config_path(profile: &str) -> PathBuf {
-    colima_home().join(profile).join("colima.yaml")
+/// The profile's own config file path: `<home>/<profile>/colima.yaml`.
+fn profile_config_path_at(home: &std::path::Path, profile: &str) -> PathBuf {
+    home.join(profile).join("colima.yaml")
 }
 
-/// The user template path: `<colimaHome>/_templates/default.yaml` (what
-/// `colima template` edits).
-fn template_path() -> PathBuf {
-    colima_home().join("_templates").join("default.yaml")
+/// The user template path: `<home>/_templates/default.yaml` (what `colima
+/// template` edits).
+fn template_path_at(home: &std::path::Path) -> PathBuf {
+    home.join("_templates").join("default.yaml")
 }
 
 /// `profile_config_raw`: return the raw YAML text to seed the configuration
@@ -51,10 +51,9 @@ fn template_path() -> PathBuf {
 /// user template, else the embedded upstream default. `path` is always the
 /// profile's own file path (i.e. where a save will land), and `exists`
 /// reflects whether that profile file currently exists on disk.
-#[tauri::command]
-pub async fn profile_config_raw(profile: String) -> Result<ProfileConfigRaw, String> {
-    validate_profile_name(&profile)?;
-    let path = profile_config_path(&profile);
+fn profile_config_raw_at(home: &std::path::Path, profile: &str) -> Result<ProfileConfigRaw, String> {
+    validate_profile_name(profile)?;
+    let path = profile_config_path_at(home, profile);
 
     if let Ok(content) = std::fs::read_to_string(&path) {
         return Ok(ProfileConfigRaw {
@@ -65,7 +64,7 @@ pub async fn profile_config_raw(profile: String) -> Result<ProfileConfigRaw, Str
         });
     }
 
-    if let Ok(content) = std::fs::read_to_string(template_path()) {
+    if let Ok(content) = std::fs::read_to_string(template_path_at(home)) {
         if !content.trim().is_empty() {
             return Ok(ProfileConfigRaw {
                 content,
@@ -84,6 +83,11 @@ pub async fn profile_config_raw(profile: String) -> Result<ProfileConfigRaw, Str
     })
 }
 
+#[tauri::command]
+pub async fn profile_config_raw(profile: String) -> Result<ProfileConfigRaw, String> {
+    profile_config_raw_at(&colima_home(), &profile)
+}
+
 /// Validate that `content` parses as YAML and that the top-level value is a
 /// mapping (object), which is what colima.yaml must be.
 fn validate_yaml_mapping(content: &str) -> Result<(), String> {
@@ -99,12 +103,11 @@ fn validate_yaml_mapping(content: &str) -> Result<(), String> {
 /// `save_profile_config_raw`: validate `content`, back up the existing file
 /// (if any) to `colima.yaml.bak`, and write the new content atomically
 /// (temp file in the same directory, then rename).
-#[tauri::command]
-pub async fn save_profile_config_raw(profile: String, content: String) -> Result<(), String> {
-    validate_profile_name(&profile)?;
-    validate_yaml_mapping(&content)?;
+fn save_profile_config_raw_at(home: &std::path::Path, profile: &str, content: &str) -> Result<(), String> {
+    validate_profile_name(profile)?;
+    validate_yaml_mapping(content)?;
 
-    let path = profile_config_path(&profile);
+    let path = profile_config_path_at(home, profile);
     let dir = path
         .parent()
         .ok_or_else(|| "invalid profile path".to_string())?;
@@ -115,7 +118,12 @@ pub async fn save_profile_config_raw(profile: String, content: String) -> Result
         std::fs::copy(&path, &backup).map_err(|e| format!("failed to back up existing config: {e}"))?;
     }
 
-    write_atomically(&path, &content)
+    write_atomically(&path, content)
+}
+
+#[tauri::command]
+pub async fn save_profile_config_raw(profile: String, content: String) -> Result<(), String> {
+    save_profile_config_raw_at(&colima_home(), &profile, &content)
 }
 
 /// Write `content` to `path` atomically: write to a temp file in the same
@@ -156,20 +164,17 @@ fn write_atomically(path: &std::path::Path, content: &str) -> Result<(), String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
-    // `COLIMA_HOME` is process-global state; serialize tests that touch it
-    // so they don't stomp on each other when run concurrently.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    struct TempColimaHome {
+    /// A private temp directory used directly as the injected `home` for the
+    /// `_at` functions under test. No process env var is ever touched, so
+    /// these tests can run concurrently with anything else in the suite
+    /// (including other modules' tests) without any locking.
+    struct TempDir {
         dir: PathBuf,
-        _guard: std::sync::MutexGuard<'static, ()>,
     }
 
-    impl TempColimaHome {
+    impl TempDir {
         fn new(tag: &str) -> Self {
-            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let dir = std::env::temp_dir().join(format!(
                 "colima-desktop-test-{tag}-{}-{}",
                 std::process::id(),
@@ -179,100 +184,96 @@ mod tests {
                     .as_nanos()
             ));
             std::fs::create_dir_all(&dir).unwrap();
-            std::env::set_var("COLIMA_HOME", &dir);
-            TempColimaHome { dir, _guard: guard }
+            TempDir { dir }
         }
     }
 
-    impl Drop for TempColimaHome {
+    impl Drop for TempDir {
         fn drop(&mut self) {
-            std::env::remove_var("COLIMA_HOME");
             let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 
-    #[tokio::test]
-    async fn source_precedence_prefers_profile_file() {
-        let home = TempColimaHome::new("precedence-profile");
+    #[test]
+    fn source_precedence_prefers_profile_file() {
+        let home = TempDir::new("precedence-profile");
         let profile_dir = home.dir.join("default");
         std::fs::create_dir_all(&profile_dir).unwrap();
         std::fs::write(profile_dir.join("colima.yaml"), "cpu: 9\n").unwrap();
         std::fs::create_dir_all(home.dir.join("_templates")).unwrap();
         std::fs::write(home.dir.join("_templates").join("default.yaml"), "cpu: 5\n").unwrap();
 
-        let result = profile_config_raw("default".to_string()).await.unwrap();
+        let result = profile_config_raw_at(&home.dir, "default").unwrap();
         assert_eq!(result.source, ConfigSource::Profile);
         assert!(result.exists);
         assert!(result.content.contains("cpu: 9"));
     }
 
-    #[tokio::test]
-    async fn source_precedence_falls_back_to_template() {
-        let home = TempColimaHome::new("precedence-template");
+    #[test]
+    fn source_precedence_falls_back_to_template() {
+        let home = TempDir::new("precedence-template");
         std::fs::create_dir_all(home.dir.join("_templates")).unwrap();
         std::fs::write(home.dir.join("_templates").join("default.yaml"), "cpu: 5\n").unwrap();
 
-        let result = profile_config_raw("default".to_string()).await.unwrap();
+        let result = profile_config_raw_at(&home.dir, "default").unwrap();
         assert_eq!(result.source, ConfigSource::Template);
         assert!(!result.exists);
         assert!(result.content.contains("cpu: 5"));
     }
 
-    #[tokio::test]
-    async fn source_precedence_falls_back_to_builtin() {
-        let _home = TempColimaHome::new("precedence-builtin");
+    #[test]
+    fn source_precedence_falls_back_to_builtin() {
+        let home = TempDir::new("precedence-builtin");
 
-        let result = profile_config_raw("default".to_string()).await.unwrap();
+        let result = profile_config_raw_at(&home.dir, "default").unwrap();
         assert_eq!(result.source, ConfigSource::Builtin);
         assert!(!result.exists);
         assert!(result.content.contains("Colima is Copyright"));
         assert!(result.content.contains("cpu: 2"));
     }
 
-    #[tokio::test]
-    async fn source_precedence_ignores_empty_template() {
-        let _home = TempColimaHome::new("precedence-empty-template");
-        std::fs::create_dir_all(_home.dir.join("_templates")).unwrap();
-        std::fs::write(_home.dir.join("_templates").join("default.yaml"), "").unwrap();
+    #[test]
+    fn source_precedence_ignores_empty_template() {
+        let home = TempDir::new("precedence-empty-template");
+        std::fs::create_dir_all(home.dir.join("_templates")).unwrap();
+        std::fs::write(home.dir.join("_templates").join("default.yaml"), "").unwrap();
 
-        let result = profile_config_raw("default".to_string()).await.unwrap();
+        let result = profile_config_raw_at(&home.dir, "default").unwrap();
         assert_eq!(result.source, ConfigSource::Builtin);
     }
 
-    #[tokio::test]
-    async fn save_rejects_invalid_profile_name() {
-        let _home = TempColimaHome::new("invalid-profile-name");
-        let result = save_profile_config_raw("../evil".to_string(), "cpu: 2\n".to_string()).await;
+    #[test]
+    fn save_rejects_invalid_profile_name() {
+        let home = TempDir::new("invalid-profile-name");
+        let result = save_profile_config_raw_at(&home.dir, "../evil", "cpu: 2\n");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("invalid profile name"));
     }
 
-    #[tokio::test]
-    async fn save_rejects_invalid_yaml() {
-        let _home = TempColimaHome::new("invalid-yaml");
-        let result = save_profile_config_raw("default".to_string(), "cpu: [1, 2\n".to_string()).await;
+    #[test]
+    fn save_rejects_invalid_yaml() {
+        let home = TempDir::new("invalid-yaml");
+        let result = save_profile_config_raw_at(&home.dir, "default", "cpu: [1, 2\n");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("invalid YAML"));
     }
 
-    #[tokio::test]
-    async fn save_rejects_non_mapping_yaml() {
-        let _home = TempColimaHome::new("non-mapping-yaml");
-        let result = save_profile_config_raw("default".to_string(), "- 1\n- 2\n".to_string()).await;
+    #[test]
+    fn save_rejects_non_mapping_yaml() {
+        let home = TempDir::new("non-mapping-yaml");
+        let result = save_profile_config_raw_at(&home.dir, "default", "- 1\n- 2\n");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("mapping"));
     }
 
-    #[tokio::test]
-    async fn save_creates_backup_of_existing_file() {
-        let home = TempColimaHome::new("backup");
+    #[test]
+    fn save_creates_backup_of_existing_file() {
+        let home = TempDir::new("backup");
         let profile_dir = home.dir.join("default");
         std::fs::create_dir_all(&profile_dir).unwrap();
         std::fs::write(profile_dir.join("colima.yaml"), "cpu: 1\n").unwrap();
 
-        save_profile_config_raw("default".to_string(), "cpu: 2\n".to_string())
-            .await
-            .unwrap();
+        save_profile_config_raw_at(&home.dir, "default", "cpu: 2\n").unwrap();
 
         let backup = std::fs::read_to_string(profile_dir.join("colima.yaml.bak")).unwrap();
         assert_eq!(backup, "cpu: 1\n");
@@ -280,25 +281,21 @@ mod tests {
         assert_eq!(current, "cpu: 2\n");
     }
 
-    #[tokio::test]
-    async fn save_creates_profile_dir_if_missing() {
-        let home = TempColimaHome::new("create-dir");
-        save_profile_config_raw("brandnew".to_string(), "cpu: 4\n".to_string())
-            .await
-            .unwrap();
+    #[test]
+    fn save_creates_profile_dir_if_missing() {
+        let home = TempDir::new("create-dir");
+        save_profile_config_raw_at(&home.dir, "brandnew", "cpu: 4\n").unwrap();
         let content = std::fs::read_to_string(home.dir.join("brandnew").join("colima.yaml")).unwrap();
         assert_eq!(content, "cpu: 4\n");
     }
 
-    #[tokio::test]
-    async fn save_is_atomic_and_leaves_no_temp_file() {
-        let home = TempColimaHome::new("atomic");
+    #[test]
+    fn save_is_atomic_and_leaves_no_temp_file() {
+        let home = TempDir::new("atomic");
         let profile_dir = home.dir.join("default");
         std::fs::create_dir_all(&profile_dir).unwrap();
 
-        save_profile_config_raw("default".to_string(), "cpu: 7\n".to_string())
-            .await
-            .unwrap();
+        save_profile_config_raw_at(&home.dir, "default", "cpu: 7\n").unwrap();
 
         let entries: Vec<_> = std::fs::read_dir(&profile_dir)
             .unwrap()
@@ -326,7 +323,6 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn smoke_reads_real_colima_home() {
-        std::env::remove_var("COLIMA_HOME");
         let result = profile_config_raw("default".to_string()).await.unwrap();
         assert!(result.exists, "expected ~/.colima/default/colima.yaml to exist on this machine");
         assert_eq!(result.source, ConfigSource::Profile);

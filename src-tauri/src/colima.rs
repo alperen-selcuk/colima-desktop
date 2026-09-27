@@ -277,23 +277,37 @@ fn start_args(profile: &str, opts: &StartOptions) -> Vec<String> {
     args
 }
 
-/// Resolve `$COLIMA_HOME` (or `~/.colima`), the root under which each
-/// profile's directory (config, sockets, ssh config) lives.
-pub fn colima_home() -> PathBuf {
-    if let Ok(home) = std::env::var("COLIMA_HOME") {
+/// Resolve `colima_home_env` (or `home_env`/`.colima`), the root under which
+/// each profile's directory (config, sockets, ssh config) lives. Pure
+/// function so tests can inject values instead of mutating the
+/// process-global `COLIMA_HOME`/`HOME` env vars.
+fn resolve_colima_home(colima_home_env: Option<&str>, home_env: Option<&str>) -> PathBuf {
+    if let Some(home) = colima_home_env {
         if !home.is_empty() {
             return PathBuf::from(home);
         }
     }
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let home = home_env.unwrap_or(".");
     PathBuf::from(home).join(".colima")
+}
+
+/// Resolve `$COLIMA_HOME` (or `~/.colima`), the root under which each
+/// profile's directory (config, sockets, ssh config) lives.
+pub fn colima_home() -> PathBuf {
+    resolve_colima_home(std::env::var("COLIMA_HOME").ok().as_deref(), std::env::var("HOME").ok().as_deref())
+}
+
+/// Fallback docker socket path when `colima status` can't be consulted:
+/// `unix://<colima_home>/<profile>/docker.sock`.
+fn fallback_docker_socket_at(home: &std::path::Path, profile: &str) -> String {
+    let path = home.join(profile).join("docker.sock");
+    format!("unix://{}", path.display())
 }
 
 /// Fallback docker socket path when `colima status` can't be consulted:
 /// `unix://<colima_home>/<profile>/docker.sock`.
 fn fallback_docker_socket(profile: &str) -> String {
-    let path = colima_home().join(profile).join("docker.sock");
-    format!("unix://{}", path.display())
+    fallback_docker_socket_at(&colima_home(), profile)
 }
 
 /// Resolve the docker socket for `profile`, using the 30s cache (§2.2)
@@ -577,9 +591,30 @@ mod tests {
 
     #[test]
     fn fallback_docker_socket_uses_colima_home() {
-        std::env::set_var("COLIMA_HOME", "/tmp/colimahome");
-        let sock = fallback_docker_socket("default");
+        let sock = fallback_docker_socket_at(std::path::Path::new("/tmp/colimahome"), "default");
         assert_eq!(sock, "unix:///tmp/colimahome/default/docker.sock");
-        std::env::remove_var("COLIMA_HOME");
+    }
+
+    #[test]
+    fn resolve_colima_home_prefers_colima_home_env() {
+        assert_eq!(
+            resolve_colima_home(Some("/tmp/colimahome"), Some("/Users/test")),
+            PathBuf::from("/tmp/colimahome")
+        );
+    }
+
+    #[test]
+    fn resolve_colima_home_falls_back_to_home_dot_colima() {
+        assert_eq!(resolve_colima_home(None, Some("/Users/test")), PathBuf::from("/Users/test/.colima"));
+    }
+
+    #[test]
+    fn resolve_colima_home_ignores_empty_colima_home_env() {
+        assert_eq!(resolve_colima_home(Some(""), Some("/Users/test")), PathBuf::from("/Users/test/.colima"));
+    }
+
+    #[test]
+    fn resolve_colima_home_falls_back_to_dot_when_home_missing() {
+        assert_eq!(resolve_colima_home(None, None), PathBuf::from("./.colima"));
     }
 }

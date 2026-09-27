@@ -32,10 +32,12 @@ const KNOWN_DIRS: &[&str] = &[
 
 const PATH_MARKER: &str = "__PATH__";
 
-/// Expand a leading `~` to the user's home directory.
-fn expand_home(path: &str) -> PathBuf {
+/// Expand a leading `~` to `home`, if given. Pure function so tests can
+/// inject a home directory instead of mutating the process-global `HOME`
+/// env var.
+fn expand_home_with(path: &str, home: Option<&std::ffi::OsStr>) -> PathBuf {
     if let Some(rest) = path.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
+        if let Some(home) = home {
             return PathBuf::from(home).join(rest);
         }
     }
@@ -70,9 +72,11 @@ fn shell_path() -> Option<String> {
     Some(rest[..end].to_string())
 }
 
-/// Merge the shell `PATH` (if resolvable) with [`KNOWN_DIRS`], de-duplicated,
-/// preserving order (shell entries first).
-fn merge_path(shell_path: Option<&str>) -> String {
+/// Merge the shell `PATH` (if resolvable) with [`KNOWN_DIRS`] (expanded
+/// against `home`), de-duplicated, preserving order (shell entries first).
+/// Pure function so tests can inject `home` instead of mutating the
+/// process-global `HOME` env var.
+fn merge_path_with(shell_path: Option<&str>, home: Option<&std::ffi::OsStr>) -> String {
     let mut seen = std::collections::HashSet::new();
     let mut parts: Vec<String> = Vec::new();
 
@@ -86,13 +90,19 @@ fn merge_path(shell_path: Option<&str>) -> String {
     }
 
     for dir in KNOWN_DIRS {
-        let expanded = expand_home(dir).to_string_lossy().to_string();
+        let expanded = expand_home_with(dir, home).to_string_lossy().to_string();
         if seen.insert(expanded.clone()) {
             parts.push(expanded);
         }
     }
 
     parts.join(":")
+}
+
+/// Merge the shell `PATH` (if resolvable) with [`KNOWN_DIRS`], de-duplicated,
+/// preserving order (shell entries first).
+fn merge_path(shell_path: Option<&str>) -> String {
+    merge_path_with(shell_path, std::env::var_os("HOME").as_deref())
 }
 
 /// Resolve and set the process `PATH` from the user's shell plus known
@@ -163,15 +173,15 @@ mod tests {
 
     #[test]
     fn expands_tilde() {
-        std::env::set_var("HOME", "/Users/test");
-        assert_eq!(expand_home("~/.local/bin"), PathBuf::from("/Users/test/.local/bin"));
-        assert_eq!(expand_home("/usr/bin"), PathBuf::from("/usr/bin"));
+        let home = std::ffi::OsStr::new("/Users/test");
+        assert_eq!(expand_home_with("~/.local/bin", Some(home)), PathBuf::from("/Users/test/.local/bin"));
+        assert_eq!(expand_home_with("/usr/bin", Some(home)), PathBuf::from("/usr/bin"));
     }
 
     #[test]
     fn merge_path_dedupes_and_orders_shell_first() {
-        std::env::set_var("HOME", "/Users/test");
-        let merged = merge_path(Some("/usr/local/bin:/usr/bin"));
+        let home = std::ffi::OsStr::new("/Users/test");
+        let merged = merge_path_with(Some("/usr/local/bin:/usr/bin"), Some(home));
         let parts: Vec<&str> = merged.split(':').collect();
         assert_eq!(parts[0], "/usr/local/bin");
         // /usr/bin only appears once even though it's both in shell path and KNOWN_DIRS
@@ -182,8 +192,8 @@ mod tests {
 
     #[test]
     fn merge_path_without_shell_path_still_has_known_dirs() {
-        std::env::set_var("HOME", "/Users/test");
-        let merged = merge_path(None);
+        let home = std::ffi::OsStr::new("/Users/test");
+        let merged = merge_path_with(None, Some(home));
         assert!(merged.contains("/usr/local/bin"));
         assert!(merged.contains("/opt/homebrew/bin"));
     }

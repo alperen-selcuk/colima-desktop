@@ -77,22 +77,30 @@ fn require_profile(profile: Option<&str>) -> Result<&str, String> {
     profile.ok_or_else(|| "profile is required for this terminal target".to_string())
 }
 
-/// Pick the host login shell: `$SHELL` if it exists on disk, else the
-/// first of `/bin/zsh`, `/bin/bash`, `/bin/sh` that exists.
-pub fn host_shell() -> String {
-    if let Ok(shell) = std::env::var("SHELL") {
-        if !shell.is_empty() && std::path::Path::new(&shell).is_file() {
-            return shell;
+/// Pick the host login shell: `shell_env` if it exists on disk (per
+/// `is_file`), else the first of `/bin/zsh`, `/bin/bash`, `/bin/sh` that
+/// exists. Pure function so tests can inject values instead of mutating the
+/// process-global `SHELL` env var.
+fn pick_shell(shell_env: Option<&str>, is_file: impl Fn(&str) -> bool) -> String {
+    if let Some(shell) = shell_env {
+        if !shell.is_empty() && is_file(shell) {
+            return shell.to_string();
         }
     }
     for candidate in ["/bin/zsh", "/bin/bash", "/bin/sh"] {
-        if std::path::Path::new(candidate).is_file() {
+        if is_file(candidate) {
             return candidate.to_string();
         }
     }
     // Last resort: `sh` is required by POSIX to exist, even if somehow not
     // found above (e.g. a nonstandard filesystem layout).
     "/bin/sh".to_string()
+}
+
+/// Pick the host login shell: `$SHELL` if it exists on disk, else the
+/// first of `/bin/zsh`, `/bin/bash`, `/bin/sh` that exists.
+pub fn host_shell() -> String {
+    pick_shell(std::env::var("SHELL").ok().as_deref(), |p| std::path::Path::new(p).is_file())
 }
 
 #[cfg(test)]
@@ -175,29 +183,37 @@ mod tests {
     }
 
     #[test]
-    fn host_shell_falls_back_when_shell_env_missing_file() {
-        // SAFETY-ish: this mutates a process-global env var for the test;
-        // acceptable in a single-threaded-per-test cargo test run since we
-        // restore it immediately after reading the result.
-        let prev = std::env::var("SHELL").ok();
-        std::env::set_var("SHELL", "/nonexistent/definitely-not-a-shell");
-        let shell = host_shell();
-        assert!(shell == "/bin/zsh" || shell == "/bin/bash" || shell == "/bin/sh");
-        match prev {
-            Some(v) => std::env::set_var("SHELL", v),
-            None => std::env::remove_var("SHELL"),
-        }
+    fn pick_shell_uses_shell_env_when_it_exists() {
+        assert_eq!(pick_shell(Some("/bin/sh"), |p| p == "/bin/sh"), "/bin/sh");
     }
 
     #[test]
-    fn host_shell_uses_shell_env_when_it_exists() {
-        let prev = std::env::var("SHELL").ok();
-        // /bin/sh exists on every macOS/Linux system.
-        std::env::set_var("SHELL", "/bin/sh");
-        assert_eq!(host_shell(), "/bin/sh");
-        match prev {
-            Some(v) => std::env::set_var("SHELL", v),
-            None => std::env::remove_var("SHELL"),
-        }
+    fn pick_shell_falls_back_to_zsh_when_shell_env_missing_file() {
+        let shell = pick_shell(Some("/nonexistent/definitely-not-a-shell"), |p| p == "/bin/zsh");
+        assert_eq!(shell, "/bin/zsh");
+    }
+
+    #[test]
+    fn pick_shell_falls_back_to_bash_when_zsh_missing() {
+        let shell = pick_shell(Some("/nonexistent/definitely-not-a-shell"), |p| p == "/bin/bash");
+        assert_eq!(shell, "/bin/bash");
+    }
+
+    #[test]
+    fn pick_shell_falls_back_to_sh_when_nothing_exists() {
+        let shell = pick_shell(Some("/nonexistent/definitely-not-a-shell"), |_| false);
+        assert_eq!(shell, "/bin/sh");
+    }
+
+    #[test]
+    fn pick_shell_ignores_empty_shell_env() {
+        let shell = pick_shell(Some(""), |p| p == "/bin/bash");
+        assert_eq!(shell, "/bin/bash");
+    }
+
+    #[test]
+    fn pick_shell_falls_back_when_shell_env_absent() {
+        let shell = pick_shell(None, |p| p == "/bin/bash");
+        assert_eq!(shell, "/bin/bash");
     }
 }
