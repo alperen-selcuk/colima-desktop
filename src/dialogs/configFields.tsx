@@ -1,8 +1,9 @@
 // Small, reusable form controls shared by the machine configuration editor
 // (§6.4). Kept separate from MachineConfigDialog.tsx to keep that file
 // focused on section layout and state wiring.
-import { Minus, Plus, X } from "lucide-react";
+import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import type { ReactNode } from "react";
+import type { ConfigIssue } from "../lib/types";
 
 const inputBase =
   "w-full rounded border px-2.5 py-1.5 text-[12.5px] outline-none disabled:opacity-50";
@@ -345,6 +346,54 @@ export function SectionHeading({ children }: { children: ReactNode }) {
     <h3 className="mb-3 text-[13px] font-semibold" style={{ color: "var(--text)" }}>
       {children}
     </h3>
+  );
+}
+
+/** Live validation issues panel (§6.4): errors block saving, warnings don't.
+ * Each row's path is clickable so the caller can jump to the relevant
+ * section/field (see `sectionForIssuePath` in MachineConfigDialog.tsx). */
+export function IssuesPanel({
+  issues,
+  onJumpTo,
+}: {
+  issues: ConfigIssue[];
+  onJumpTo: (path: string) => void;
+}) {
+  if (issues.length === 0) return null;
+  const errors = issues.filter((i) => i.severity === "error");
+  const warnings = issues.filter((i) => i.severity === "warning");
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border p-2.5" style={{ borderColor: "var(--border)" }}>
+      {errors.map((issue, i) => (
+        <IssueRow key={`e-${i}`} issue={issue} onJumpTo={onJumpTo} />
+      ))}
+      {warnings.map((issue, i) => (
+        <IssueRow key={`w-${i}`} issue={issue} onJumpTo={onJumpTo} />
+      ))}
+    </div>
+  );
+}
+
+function IssueRow({ issue, onJumpTo }: { issue: ConfigIssue; onJumpTo: (path: string) => void }) {
+  const isError = issue.severity === "error";
+  const color = isError ? "var(--danger)" : "var(--warn)";
+  return (
+    <div className="flex items-start gap-1.5 text-[12px]" style={{ color }}>
+      <AlertTriangle size={13} className="mt-[1px] flex-shrink-0" />
+      <span>
+        {issue.path && (
+          <button
+            type="button"
+            onClick={() => onJumpTo(issue.path)}
+            className="mr-1 rounded px-1 py-0.5 font-mono-app text-[11px] underline decoration-dotted"
+            style={{ background: "var(--surface-3)" }}
+          >
+            {issue.path}
+          </button>
+        )}
+        {issue.message}
+      </span>
+    </div>
   );
 }
 

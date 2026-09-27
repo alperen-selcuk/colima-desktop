@@ -21,12 +21,14 @@ import {
 import { open as openFolderDialog } from "@tauri-apps/plugin-dialog";
 import * as api from "../lib/api";
 import { isTauriRuntime } from "../lib/api";
+import type { ConfigIssue } from "../lib/types";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
 import {
   Banner,
   ChipList,
   FieldRow,
+  IssuesPanel,
   KeyValueEditor,
   NumberStepper,
   Segmented,
@@ -79,6 +81,56 @@ const SECTIONS: { id: SectionId; label: string; icon: typeof Cpu }[] = [
   { id: "yaml", label: "YAML", icon: Code2 },
 ];
 
+/** Maps a `ConfigIssue.path` (e.g. "network.dns[1]", "mounts[0].location",
+ * "kubernetes.port") to the section that shows that key, so clicking an
+ * issue can jump the user straight to it. Order matters: more specific
+ * prefixes (checked via the leading path segment) are listed first. */
+function sectionForIssuePath(path: string): SectionId {
+  const head = path.split(/[.[]/)[0];
+  switch (head) {
+    case "network":
+      return "network";
+    case "kubernetes":
+      return "kubernetes";
+    case "mounts":
+    case "mountType":
+    case "mountInotify":
+      return "mounts";
+    case "provision":
+      return "provision";
+    case "env":
+      return "environment";
+    case "sshPort":
+    case "sshConfig":
+    case "forwardAgent":
+      return "ssh";
+    case "runtime":
+    case "autoActivate":
+    case "modelRunner":
+    case "docker":
+      return "runtime";
+    case "vmType":
+    case "rosetta":
+    case "binfmt":
+    case "nestedVirtualization":
+    case "portForwarder":
+    case "diskImage":
+    case "diskImageMirror":
+    case "forceDiskImage":
+      return "vm";
+    case "cpu":
+    case "disk":
+    case "rootDisk":
+    case "memory":
+    case "cpuType":
+    case "arch":
+    case "hostname":
+      return "resources";
+    default:
+      return "yaml";
+  }
+}
+
 const K3S_QUICK_TOGGLES = [
   { label: "traefik", value: "--disable=traefik" },
   { label: "servicelb", value: "--disable=servicelb" },
@@ -125,7 +177,10 @@ export function MachineConfigDialog({
   const [dockerJsonText, setDockerJsonText] = useState("{}");
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0); // bumps to force re-render after in-place doc mutation
+  const [issues, setIssues] = useState<ConfigIssue[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const validationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const validationRequestId = useRef(0);
 
   const targetProfile = isNew ? newName.trim() : profileName ?? "";
 
@@ -150,7 +205,32 @@ export function MachineConfigDialog({
     setSection("resources");
     setYamlError(null);
     setDockerJsonError(null);
+    setIssues([]);
   }, [open]);
+
+  // Live typed validation (§6.4): mirrors the checks `save_profile_config_raw`
+  // enforces server-side, debounced ~300ms so it doesn't fire on every
+  // keystroke. Guarded by a request id so a slow response for a stale
+  // `yamlText` can never clobber the result of a newer one.
+  useEffect(() => {
+    if (!open || !doc) return;
+    if (validationTimer.current) clearTimeout(validationTimer.current);
+    const requestId = ++validationRequestId.current;
+    validationTimer.current = setTimeout(() => {
+      api
+        .validateProfileConfigRaw(yamlText)
+        .then((result) => {
+          if (validationRequestId.current === requestId) setIssues(result);
+        })
+        .catch(() => {
+          // Best-effort: a validation-call failure shouldn't block editing;
+          // the parse-error path (`yamlError`) already covers unparsable YAML.
+        });
+    }, 300);
+    return () => {
+      if (validationTimer.current) clearTimeout(validationTimer.current);
+    };
+  }, [open, doc, yamlText]);
 
   useEffect(() => {
     const source = isNew ? templateQuery.data : rawQuery.data;
@@ -238,7 +318,26 @@ export function MachineConfigDialog({
       ? "Must match ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$"
       : null;
 
-  const canSave = doc !== null && !yamlError && (!isNew || (newName.trim().length > 0 && !nameError));
+  const errorIssues = useMemo(() => issues.filter((i) => i.severity === "error"), [issues]);
+  const warningIssues = useMemo(() => issues.filter((i) => i.severity === "warning"), [issues]);
+
+  /** First issue whose path exactly matches `path` (used to mark a single
+   * field inline); the issues panel above the form shows the full list. */
+  const issueForPath = (path: string): ConfigIssue | undefined => issues.find((i) => i.path === path);
+
+  /** First issue whose path starts with `prefix` (used for list/map fields
+   * like `network.dns` or `env`, where individual issues are reported per
+   * element/key, e.g. `network.dns[1]` or `env.SOME_KEY`). */
+  const issueForPrefix = (prefix: string): ConfigIssue | undefined =>
+    issues.find((i) => i.path === prefix || i.path.startsWith(`${prefix}[`) || i.path.startsWith(`${prefix}.`));
+
+  const jumpToIssue = (path: string) => setSection(sectionForIssuePath(path));
+
+  const canSave =
+    doc !== null &&
+    !yamlError &&
+    errorIssues.length === 0 &&
+    (!isNew || (newName.trim().length > 0 && !nameError));
 
   const handleSave = async (thenStart: boolean) => {
     if (!doc || !canSave) return;
@@ -373,13 +472,25 @@ export function MachineConfigDialog({
                 </Banner>
               )}
 
+              <IssuesPanel issues={issues} onJumpTo={jumpToIssue} />
+
               {section === "resources" && (
                 <div className="flex flex-col gap-4">
                   <SectionHeading>Resources</SectionHeading>
-                  <FieldRow label="CPU" yamlKey="cpu" help="Number of CPUs allocated to the virtual machine.">
+                  <FieldRow
+                    label="CPU"
+                    yamlKey="cpu"
+                    help="Number of CPUs allocated to the virtual machine."
+                    invalid={issueForPath("cpu")?.message}
+                  >
                     <NumberStepper value={full.resources.cpu} min={1} onChange={(v) => mutate((d) => setIn(d, ["cpu"], v))} />
                   </FieldRow>
-                  <FieldRow label="Memory (GiB)" yamlKey="memory" help="Size of the memory allocated to the virtual machine.">
+                  <FieldRow
+                    label="Memory (GiB)"
+                    yamlKey="memory"
+                    help="Size of the memory allocated to the virtual machine."
+                    invalid={issueForPath("memory")?.message}
+                  >
                     <NumberStepper
                       value={full.resources.memory}
                       min={1}
@@ -391,11 +502,16 @@ export function MachineConfigDialog({
                     label="Disk (GiB)"
                     yamlKey="disk"
                     help="Container data disk size. Can only be increased after the machine is created."
-                    invalid={diskShrunk ? "Cannot shrink an existing disk" : undefined}
+                    invalid={(diskShrunk && "Cannot shrink an existing disk") || issueForPath("disk")?.message}
                   >
                     <NumberStepper value={full.resources.disk} min={1} onChange={(v) => mutate((d) => setIn(d, ["disk"], v))} />
                   </FieldRow>
-                  <FieldRow label="Root disk (GiB)" yamlKey="rootDisk" help="Root filesystem disk size (ignored for runtime none).">
+                  <FieldRow
+                    label="Root disk (GiB)"
+                    yamlKey="rootDisk"
+                    help="Root filesystem disk size (ignored for runtime none)."
+                    invalid={issueForPath("rootDisk")?.message}
+                  >
                     <NumberStepper value={full.resources.rootDisk} min={1} onChange={(v) => mutate((d) => setIn(d, ["rootDisk"], v))} />
                   </FieldRow>
                   <FieldRow label="CPU type" yamlKey="cpuType" help="CPU type for qemu VMs, e.g. host or host,+ssse3.">
@@ -405,7 +521,10 @@ export function MachineConfigDialog({
                     label="Architecture"
                     yamlKey="arch"
                     help="Cannot be changed after the virtual machine is created."
-                    invalid={architectureChanged ? "Changing this requires deleting the machine" : undefined}
+                    invalid={
+                      (architectureChanged && "Changing this requires deleting the machine") ||
+                      issueForPath("arch")?.message
+                    }
                   >
                     <Segmented
                       value={full.resources.arch as "host" | "aarch64" | "x86_64"}
@@ -417,7 +536,12 @@ export function MachineConfigDialog({
                       onChange={(v) => mutate((d) => setIn(d, ["arch"], v))}
                     />
                   </FieldRow>
-                  <FieldRow label="Hostname" yamlKey="hostname" help="Custom hostname; defaults to colima / colima-<profile>.">
+                  <FieldRow
+                    label="Hostname"
+                    yamlKey="hostname"
+                    help="Custom hostname; defaults to colima / colima-<profile>."
+                    invalid={issueForPath("hostname")?.message}
+                  >
                     <TextInput
                       value={full.resources.hostname}
                       onChange={(e) =>
@@ -435,7 +559,10 @@ export function MachineConfigDialog({
                     label="Runtime"
                     yamlKey="runtime"
                     help="Cannot be changed after the virtual machine is created."
-                    invalid={runtimeChanged ? "Changing this requires deleting the machine" : undefined}
+                    invalid={
+                      (runtimeChanged && "Changing this requires deleting the machine") ||
+                      issueForPath("runtime")?.message
+                    }
                   >
                     <Segmented
                       value={full.runtime.runtime as "docker" | "containerd" | "incus"}
@@ -450,7 +577,12 @@ export function MachineConfigDialog({
                   <FieldRow label="Auto-activate" yamlKey="autoActivate" help="Set as active docker/kubernetes/incus context on startup.">
                     <Switch checked={full.runtime.autoActivate} onChange={(v) => mutate((d) => setIn(d, ["autoActivate"], v))} />
                   </FieldRow>
-                  <FieldRow label="Model runner" yamlKey="modelRunner" help="AI model runner; both require krunkit VM type for GPU access.">
+                  <FieldRow
+                    label="Model runner"
+                    yamlKey="modelRunner"
+                    help="AI model runner; both require krunkit VM type for GPU access."
+                    invalid={issueForPath("modelRunner")?.message}
+                  >
                     <Segmented
                       value={full.runtime.modelRunner as "docker" | "ramalama"}
                       options={[
@@ -489,13 +621,23 @@ export function MachineConfigDialog({
                   <FieldRow label="Enabled" yamlKey="kubernetes.enabled" help="Enable a single-node k3s Kubernetes cluster.">
                     <Switch checked={full.kubernetes.enabled} onChange={(v) => mutate((d) => setIn(d, ["kubernetes", "enabled"], v))} />
                   </FieldRow>
-                  <FieldRow label="Version" yamlKey="kubernetes.version" help="Must exactly match a k3s release, e.g. v1.30.0+k3s1.">
+                  <FieldRow
+                    label="Version"
+                    yamlKey="kubernetes.version"
+                    help="Must exactly match a k3s release, e.g. v1.30.0+k3s1."
+                    invalid={issueForPath("kubernetes.version")?.message}
+                  >
                     <TextInput
                       value={full.kubernetes.version}
                       onChange={(e) => mutate((d) => setIn(d, ["kubernetes", "version"], e.target.value))}
                     />
                   </FieldRow>
-                  <FieldRow label="k3s args" yamlKey="kubernetes.k3sArgs" help="Additional args passed to k3s (https://docs.k3s.io/cli/server).">
+                  <FieldRow
+                    label="k3s args"
+                    yamlKey="kubernetes.k3sArgs"
+                    help="Additional args passed to k3s (https://docs.k3s.io/cli/server)."
+                    invalid={issueForPath("kubernetes.k3sArgs")?.message}
+                  >
                     <ChipList
                       values={full.kubernetes.k3sArgs}
                       onChange={(v) => mutate((d) => setStringList(d, ["kubernetes", "k3sArgs"], v))}
@@ -503,7 +645,12 @@ export function MachineConfigDialog({
                       quickAdd={K3S_QUICK_TOGGLES}
                     />
                   </FieldRow>
-                  <FieldRow label="Port" yamlKey="kubernetes.port" help="Kubernetes API port; 0 picks a random unbound port.">
+                  <FieldRow
+                    label="Port"
+                    yamlKey="kubernetes.port"
+                    help="Kubernetes API port; 0 picks a random unbound port."
+                    invalid={issueForPath("kubernetes.port")?.message}
+                  >
                     <NumberStepper value={full.kubernetes.port} min={0} onChange={(v) => mutate((d) => setIn(d, ["kubernetes", "port"], v))} />
                   </FieldRow>
                 </div>
@@ -516,7 +663,10 @@ export function MachineConfigDialog({
                     label="VM type"
                     yamlKey="vmType"
                     help="Cannot be changed after the virtual machine is created."
-                    invalid={vmTypeChanged ? "Changing this requires deleting the machine" : undefined}
+                    invalid={
+                      (vmTypeChanged && "Changing this requires deleting the machine") ||
+                      issueForPath("vmType")?.message
+                    }
                   >
                     <Segmented
                       value={full.vm.vmType as "vz" | "qemu" | "krunkit"}
@@ -539,7 +689,12 @@ export function MachineConfigDialog({
                   <FieldRow label="Nested virtualization" yamlKey="nestedVirtualization" help="Requires M3 Mac and vmType vz.">
                     <Switch checked={full.vm.nestedVirtualization} onChange={(v) => mutate((d) => setIn(d, ["nestedVirtualization"], v))} />
                   </FieldRow>
-                  <FieldRow label="Port forwarder" yamlKey="portForwarder" help="ssh is stable/TCP-only; grpc supports TCP+UDP (experimental).">
+                  <FieldRow
+                    label="Port forwarder"
+                    yamlKey="portForwarder"
+                    help="ssh is stable/TCP-only; grpc supports TCP+UDP (experimental)."
+                    invalid={issueForPath("portForwarder")?.message}
+                  >
                     <Segmented
                       value={full.vm.portForwarder as "ssh" | "grpc" | "none"}
                       options={[
@@ -571,7 +726,12 @@ export function MachineConfigDialog({
                   <FieldRow label="Reachable address" yamlKey="network.address" help="Assign a reachable IP to the VM (macOS only).">
                     <Switch checked={full.network.address} onChange={(v) => mutate((d) => setIn(d, ["network", "address"], v))} />
                   </FieldRow>
-                  <FieldRow label="Mode" yamlKey="network.mode" help="Network mode for the virtual machine (macOS only).">
+                  <FieldRow
+                    label="Mode"
+                    yamlKey="network.mode"
+                    help="Network mode for the virtual machine (macOS only)."
+                    invalid={issueForPath("network.mode")?.message}
+                  >
                     <Segmented
                       value={full.network.mode as "shared" | "bridged"}
                       options={[
@@ -606,14 +766,22 @@ export function MachineConfigDialog({
                     label="Gateway address"
                     yamlKey="network.gatewayAddress"
                     help="Last octet must be 2."
-                    invalid={!isValidIp(full.network.gatewayAddress) ? "Invalid IP address" : undefined}
+                    invalid={
+                      (!isValidIp(full.network.gatewayAddress) && "Invalid IP address") ||
+                      issueForPath("network.gatewayAddress")?.message
+                    }
                   >
                     <TextInput
                       value={full.network.gatewayAddress}
                       onChange={(e) => mutate((d) => setIn(d, ["network", "gatewayAddress"], e.target.value))}
                     />
                   </FieldRow>
-                  <FieldRow label="NAT66 prefix" yamlKey="network.nat66Prefix" help="IPv6 ULA prefix for NAT66 (shared mode only, not vz).">
+                  <FieldRow
+                    label="NAT66 prefix"
+                    yamlKey="network.nat66Prefix"
+                    help="IPv6 ULA prefix for NAT66 (shared mode only, not vz)."
+                    invalid={issueForPath("network.nat66Prefix")?.message}
+                  >
                     <TextInput
                       value={full.network.nat66Prefix}
                       onChange={(e) =>
@@ -627,7 +795,10 @@ export function MachineConfigDialog({
                     label="DNS resolvers"
                     yamlKey="network.dns"
                     help="Custom DNS resolvers for the virtual machine, e.g. 8.8.8.8, 1.1.1.1."
-                    invalid={full.network.dns.some((ip) => !isValidIp(ip)) ? "Contains an invalid IP address" : undefined}
+                    invalid={
+                      (full.network.dns.some((ip) => !isValidIp(ip)) && "Contains an invalid IP address") ||
+                      issueForPrefix("network.dns")?.message
+                    }
                   >
                     <ChipList
                       values={full.network.dns}
@@ -635,7 +806,12 @@ export function MachineConfigDialog({
                       placeholder="8.8.8.8"
                     />
                   </FieldRow>
-                  <FieldRow label="DNS hosts" yamlKey="network.dnsHosts" help="Custom hostname -> IP/host resolutions (ignored if DNS resolvers are set).">
+                  <FieldRow
+                    label="DNS hosts"
+                    yamlKey="network.dnsHosts"
+                    help="Custom hostname -> IP/host resolutions (ignored if DNS resolvers are set)."
+                    invalid={issueForPrefix("network.dnsHosts")?.message}
+                  >
                     <KeyValueEditor
                       entries={full.network.dnsHosts}
                       onChange={(v) => mutate((d) => setStringMap(d, ["network", "dnsHosts"], v))}
@@ -649,7 +825,12 @@ export function MachineConfigDialog({
               {section === "mounts" && (
                 <div className="flex flex-col gap-4">
                   <SectionHeading>Mounts</SectionHeading>
-                  <FieldRow label="Mount type" yamlKey="mountType" help="Cannot be changed after the virtual machine is created.">
+                  <FieldRow
+                    label="Mount type"
+                    yamlKey="mountType"
+                    help="Cannot be changed after the virtual machine is created."
+                    invalid={issueForPath("mountType")?.message}
+                  >
                     <Segmented
                       value={full.mounts.mountType as "sshfs" | "9p" | "virtiofs"}
                       options={[
@@ -672,52 +853,61 @@ export function MachineConfigDialog({
                         No custom mounts — colima mounts $HOME as writable by default.
                       </div>
                     )}
-                    {full.mounts.mounts.map((row, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 rounded border p-2"
-                        style={{ borderColor: "var(--border)" }}
-                      >
-                        <TextInput
-                          className="flex-1 font-mono-app"
-                          value={row.location}
-                          placeholder="~/projects"
-                          onChange={(e) => {
-                            const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, location: e.target.value } : r));
-                            mutate((d) => setMounts(d, rows));
-                          }}
-                        />
-                        <Button variant="ghost" size="sm" onClick={() => pickMountFolder(i, full.mounts.mounts)}>
-                          Browse…
-                        </Button>
-                        <TextInput
-                          className="flex-1 font-mono-app"
-                          value={row.mountPoint}
-                          placeholder="(mountPoint, optional)"
-                          onChange={(e) => {
-                            const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, mountPoint: e.target.value } : r));
-                            mutate((d) => setMounts(d, rows));
-                          }}
-                        />
-                        <Switch
-                          checked={row.writable}
-                          onChange={(v) => {
-                            const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, writable: v } : r));
-                            mutate((d) => setMounts(d, rows));
-                          }}
-                          label="writable"
-                        />
-                        <button
-                          onClick={() => {
-                            const rows = full.mounts.mounts.filter((_, idx) => idx !== i);
-                            mutate((d) => setMounts(d, rows));
-                          }}
-                          aria-label="Remove mount"
-                        >
-                          <X size={14} style={{ color: "var(--text-faint)" }} />
-                        </button>
-                      </div>
-                    ))}
+                    {full.mounts.mounts.map((row, i) => {
+                      const rowIssue = issueForPrefix(`mounts[${i}]`);
+                      return (
+                        <div key={i} className="flex flex-col gap-1">
+                          <div
+                            className="flex items-center gap-2 rounded border p-2"
+                            style={{ borderColor: rowIssue ? "var(--danger)" : "var(--border)" }}
+                          >
+                            <TextInput
+                              className="flex-1 font-mono-app"
+                              value={row.location}
+                              placeholder="~/projects"
+                              onChange={(e) => {
+                                const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, location: e.target.value } : r));
+                                mutate((d) => setMounts(d, rows));
+                              }}
+                            />
+                            <Button variant="ghost" size="sm" onClick={() => pickMountFolder(i, full.mounts.mounts)}>
+                              Browse…
+                            </Button>
+                            <TextInput
+                              className="flex-1 font-mono-app"
+                              value={row.mountPoint}
+                              placeholder="(mountPoint, optional)"
+                              onChange={(e) => {
+                                const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, mountPoint: e.target.value } : r));
+                                mutate((d) => setMounts(d, rows));
+                              }}
+                            />
+                            <Switch
+                              checked={row.writable}
+                              onChange={(v) => {
+                                const rows = full.mounts.mounts.map((r, idx) => (idx === i ? { ...r, writable: v } : r));
+                                mutate((d) => setMounts(d, rows));
+                              }}
+                              label="writable"
+                            />
+                            <button
+                              onClick={() => {
+                                const rows = full.mounts.mounts.filter((_, idx) => idx !== i);
+                                mutate((d) => setMounts(d, rows));
+                              }}
+                              aria-label="Remove mount"
+                            >
+                              <X size={14} style={{ color: "var(--text-faint)" }} />
+                            </button>
+                          </div>
+                          {rowIssue && (
+                            <span className="text-[11px]" style={{ color: "var(--danger)" }}>
+                              {rowIssue.path}: {rowIssue.message}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                     <Button
                       variant="secondary"
                       size="sm"
@@ -739,7 +929,12 @@ export function MachineConfigDialog({
                   <FieldRow label="Manage ~/.ssh/config" yamlKey="sshConfig" help="Automatically add an SSH config entry for the virtual machine.">
                     <Switch checked={full.ssh.sshConfig} onChange={(v) => mutate((d) => setIn(d, ["sshConfig"], v))} />
                   </FieldRow>
-                  <FieldRow label="SSH port" yamlKey="sshPort" help="0 picks a random available port.">
+                  <FieldRow
+                    label="SSH port"
+                    yamlKey="sshPort"
+                    help="0 picks a random available port."
+                    invalid={issueForPath("sshPort")?.message}
+                  >
                     <NumberStepper value={full.ssh.sshPort} min={0} onChange={(v) => mutate((d) => setIn(d, ["sshPort"], v))} />
                   </FieldRow>
                   <FieldRow label="Forward agent" yamlKey="forwardAgent" help="Forward the host's SSH agent to the virtual machine.">
@@ -751,7 +946,12 @@ export function MachineConfigDialog({
               {section === "environment" && (
                 <div className="flex flex-col gap-4">
                   <SectionHeading>Environment</SectionHeading>
-                  <FieldRow label="Environment variables" yamlKey="env" help="Environment variables set inside the virtual machine.">
+                  <FieldRow
+                    label="Environment variables"
+                    yamlKey="env"
+                    help="Environment variables set inside the virtual machine."
+                    invalid={issueForPrefix("env")?.message}
+                  >
                     <KeyValueEditor entries={full.env} onChange={(v) => mutate((d) => setStringMap(d, ["env"], v))} />
                   </FieldRow>
                 </div>
@@ -763,8 +963,12 @@ export function MachineConfigDialog({
                   <span className="text-[11.5px]" style={{ color: "var(--text-faint)" }}>
                     Custom provisioning scripts, run on startup. Must be idempotent.
                   </span>
-                  {full.provision.map((row: ProvisionRow, i: number) => (
-                    <div key={i} className="flex flex-col gap-2 rounded border p-3" style={{ borderColor: "var(--border)" }}>
+                  {full.provision.map((row: ProvisionRow, i: number) => {
+                    const modeIssue = issueForPath(`provision[${i}].mode`);
+                    const scriptIssue = issueForPath(`provision[${i}].script`);
+                    const rowBorder = scriptIssue ? "var(--danger)" : modeIssue ? "var(--warn)" : "var(--border)";
+                    return (
+                    <div key={i} className="flex flex-col gap-2 rounded border p-3" style={{ borderColor: rowBorder }}>
                       <div className="flex items-center justify-between">
                         <Segmented
                           value={row.mode}
@@ -789,6 +993,11 @@ export function MachineConfigDialog({
                           <X size={14} style={{ color: "var(--text-faint)" }} />
                         </button>
                       </div>
+                      {modeIssue && (
+                        <span className="text-[11px]" style={{ color: "var(--warn)" }}>
+                          {modeIssue.message}
+                        </span>
+                      )}
                       <TextArea
                         rows={5}
                         value={row.script}
@@ -797,8 +1006,14 @@ export function MachineConfigDialog({
                           mutate((d) => setProvision(d, rows));
                         }}
                       />
+                      {scriptIssue && (
+                        <span className="text-[11px]" style={{ color: "var(--danger)" }}>
+                          {scriptIssue.message}
+                        </span>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                   <Button
                     variant="secondary"
                     size="sm"
@@ -839,6 +1054,16 @@ export function MachineConfigDialog({
         <span className="text-[12px]" style={{ color: "var(--text-faint)" }}>
           {changeCount > 0 ? `${changeCount} change${changeCount === 1 ? "" : "s"}` : "No changes"}
         </span>
+        {errorIssues.length > 0 && (
+          <span className="text-[12px] font-medium" style={{ color: "var(--danger)" }}>
+            {errorIssues.length} error{errorIssues.length === 1 ? "" : "s"}
+          </span>
+        )}
+        {warningIssues.length > 0 && (
+          <span className="text-[12px]" style={{ color: "var(--warn)" }}>
+            {warningIssues.length} warning{warningIssues.length === 1 ? "" : "s"}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel

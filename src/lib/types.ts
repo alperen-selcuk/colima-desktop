@@ -202,6 +202,19 @@ export interface ProfileConfigRaw {
   exists: boolean;
 }
 
+/** One problem found by `validate_profile_config_raw` / enforced by `save_profile_config_raw`.
+ * `error` issues mean colima's own YAML unmarshal would fail on this field and colima would
+ * silently ignore the whole file and start with defaults instead; `warning` issues are values
+ * (typically enum-like fields) colima's unmarshal accepts as-is but doesn't recognize as documented. */
+export type IssueSeverity = "error" | "warning";
+
+export interface ConfigIssue {
+  /** Dotted/bracketed path to the offending key, e.g. "network.dns[1]", or "" for the whole document. */
+  path: string;
+  message: string;
+  severity: IssueSeverity;
+}
+
 export interface TerminalOutput {
   sessionId: string;
   data: string; // base64 of raw PTY bytes

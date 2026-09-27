@@ -2,6 +2,20 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Typed validation of `colima.yaml` in the configuration editor, mirroring colima's own config types. Values
+  colima can't load (e.g. `memory: "abc"`, `cpu: 2.5`, an invalid DNS IP) are shown live with jump-to-field
+  links and block saving — colima would otherwise ignore the whole file and silently start with defaults.
+  Unrecognised enum values are shown as non-blocking warnings.
+
+### Fixed
+
+- Homebrew cask passes `brew audit --strict` and `brew style`; install docs include the `brew trust` step
+  that Homebrew 7 requires for third-party taps.
+
 ## [0.1.1] - 2026-09-27
 
 ### Added

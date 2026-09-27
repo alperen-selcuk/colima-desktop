@@ -17,6 +17,7 @@ import type {
   OpLog,
   Profile,
   ProfileConfig,
+  ConfigIssue,
   ProfileConfigRaw,
   ProfileStatus,
   PruneTarget,
@@ -110,6 +111,8 @@ async function mockInvoke<T>(
       return mock.mockProfileConfigRaw(profile) as unknown as T;
     case "save_profile_config_raw":
       return undefined as unknown as T;
+    case "validate_profile_config_raw":
+      return mock.mockValidateProfileConfigRaw(args?.content as string) as unknown as T;
     case "start_profile":
     case "stop_profile":
     case "restart_profile":
@@ -285,6 +288,13 @@ export function profileConfigRaw(profile: string): Promise<ProfileConfigRaw> {
 
 export function saveProfileConfigRaw(profile: string, content: string): Promise<void> {
   return invoke<void>("save_profile_config_raw", { profile, content });
+}
+
+/** Live validation for the raw YAML editor: mirrors the typed checks
+ * `save_profile_config_raw` enforces server-side (§6.4), without writing
+ * anything. Call this debounced as the user types. */
+export function validateProfileConfigRaw(content: string): Promise<ConfigIssue[]> {
+  return invoke<ConfigIssue[]>("validate_profile_config_raw", { content });
 }
 
 export function listContainers(profile: string): Promise<Container[]> {

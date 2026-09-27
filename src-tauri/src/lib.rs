@@ -41,6 +41,7 @@ pub fn run() {
             colima::busy_profiles,
             config_file::profile_config_raw,
             config_file::save_profile_config_raw,
+            config_file::validate_profile_config_raw,
             docker::list_containers,
             docker::container_action,
             docker::container_inspect,

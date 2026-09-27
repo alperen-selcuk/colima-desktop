@@ -2,6 +2,7 @@
 // (i.e. outside the Tauri webview, where `__TAURI_INTERNALS__` is absent).
 // Lets every page render with representative sample data for visual QA.
 import type {
+  ConfigIssue,
   Container,
   ContainerStats,
   EnvInfo,
@@ -212,6 +213,16 @@ export function mockProfileConfigRaw(profile: string): ProfileConfigRaw {
     path: `~/.colima/${profile}/colima.yaml`,
     exists: profile === "default",
   };
+}
+
+/** Dev-mode mock for `validate_profile_config_raw`: the real typed validation
+ * (mirroring colima's `config.Config`) lives entirely in the Rust backend
+ * (src-tauri/src/config_file.rs), so there's nothing meaningful to re-derive
+ * here without duplicating it. Browser-mock mode has no backend to silently
+ * fall back to defaults in the first place, so always reporting a clean
+ * config keeps this mock honest about what it can check. */
+export function mockValidateProfileConfigRaw(_content: string): ConfigIssue[] {
+  return [];
 }
 
 export function isTauri(): boolean {
