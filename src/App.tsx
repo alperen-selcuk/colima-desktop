@@ -10,7 +10,7 @@ import { StatusBar } from "./components/StatusBar";
 import { Dock } from "./components/Dock";
 import { ToastProvider, useToast } from "./components/Toasts";
 import { StartDialog } from "./dialogs/StartDialog";
-import { MachineConfigDialog } from "./dialogs/MachineConfigDialog";
+import { MachineConfigDialog, type ConfigPatch, type SectionId } from "./dialogs/MachineConfigDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { MachinesPage } from "./pages/Machines";
 import { ContainersPage } from "./pages/Containers";
@@ -22,9 +22,15 @@ import { SetupPage } from "./pages/Setup";
 function AppShell() {
   const [page, setPage] = useState<Page>("machines");
   const [startDialogProfile, setStartDialogProfile] = useState<string | null>(null);
-  // Machine configuration editor (§6.4): `undefined` = closed, `null` = new
-  // machine, a string = editing that existing profile's config.
-  const [configDialogProfile, setConfigDialogProfile] = useState<string | null | undefined>(undefined);
+  // Machine configuration editor (§6.4/§6.5): `undefined` = closed. `profile`
+  // is `null` for a new machine, else the existing profile name being
+  // edited. `initialSection`/`initialPatch` let callers (e.g. the
+  // Kubernetes page's "Start with Kubernetes…" / "Enable permanently…")
+  // land the dialog on a specific section with an unsaved change pre-applied.
+  const [configDialog, setConfigDialog] = useState<
+    | undefined
+    | { profile: string | null; initialSection?: SectionId; initialPatch?: ConfigPatch[] }
+  >(undefined);
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -97,7 +103,21 @@ function AppShell() {
 
   const handleConfigure = () => {
     if (!selected) return;
-    setConfigDialogProfile(selected);
+    setConfigDialog({ profile: selected });
+  };
+
+  /** Opens the configuration editor on the Kubernetes section with
+   * `kubernetes.enabled: true` pre-applied as an unsaved change (§6.5); the
+   * dialog itself prefills `kubernetes.version` with colima's default if it
+   * was empty (same logic as toggling the Enabled switch by hand). Used by
+   * both "Start with Kubernetes…" (machine not running) and "Enable
+   * permanently…" (machine running, k8s off). */
+  const openConfigForKubernetes = (profile: string) => {
+    setConfigDialog({
+      profile,
+      initialSection: "kubernetes",
+      initialPatch: [{ path: ["kubernetes", "enabled"], value: true }],
+    });
   };
 
   const handleStop = () => {
@@ -152,9 +172,9 @@ function AppShell() {
             selected={selected}
             onSelect={setSelected}
             onStartProfile={(name) => setStartDialogProfile(name)}
-            onConfigureProfile={(name) => setConfigDialogProfile(name)}
+            onConfigureProfile={(name) => setConfigDialog({ profile: name })}
             onQuickStartOptions={(name) => setStartDialogProfile(name)}
-            onNewMachine={() => setConfigDialogProfile(null)}
+            onNewMachine={() => setConfigDialog({ profile: null })}
           />
         );
       case "containers":
@@ -164,14 +184,23 @@ function AppShell() {
       case "volumes":
         return <VolumesPage profile={selected} />;
       case "kubernetes":
-        return <KubernetesPage profile={selected} status={statusQuery.data} />;
+        return (
+          <KubernetesPage
+            profile={selected}
+            status={statusQuery.data}
+            busy={isBusy}
+            onStart={() => setStartDialogProfile(selected)}
+            onStartWithKubernetes={() => openConfigForKubernetes(selected)}
+            onEnablePermanently={() => openConfigForKubernetes(selected)}
+          />
+        );
       case "setup":
         return <SetupPage envInfo={envQuery.data} />;
       default:
         return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, selected, profiles, busyProfiles, statusQuery.data, envQuery.data]);
+  }, [page, selected, profiles, busyProfiles, isBusy, statusQuery.data, envQuery.data]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "var(--surface-0)" }}>
@@ -214,13 +243,15 @@ function AppShell() {
       />
 
       <MachineConfigDialog
-        open={configDialogProfile !== undefined}
-        profileName={configDialogProfile ?? null}
+        open={configDialog !== undefined}
+        profileName={configDialog?.profile ?? null}
         isRunning={
-          configDialogProfile != null &&
-          profiles.find((p) => p.name === configDialogProfile)?.status === "Running"
+          configDialog?.profile != null &&
+          profiles.find((p) => p.name === configDialog.profile)?.status === "Running"
         }
-        onClose={() => setConfigDialogProfile(undefined)}
+        initialSection={configDialog?.initialSection}
+        initialPatch={configDialog?.initialPatch}
+        onClose={() => setConfigDialog(undefined)}
         onSaved={(name) => {
           setSelected(name);
           queryClient.invalidateQueries({ queryKey: ["profiles"] });

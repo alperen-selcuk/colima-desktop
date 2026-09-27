@@ -390,6 +390,20 @@ fn check_kubernetes(mapping: &serde_yaml::Mapping, issues: &mut Vec<ConfigIssue>
     };
     check_bool(k8s, "enabled", "kubernetes.enabled", issues);
     check_string(k8s, "version", "kubernetes.version", issues);
+    // A well-formed-but-unknown version is only a frontend warning (the
+    // K3sVersionPicker checks it against the fetched/builtin list); a
+    // malformed version string is an error here because colima would fail to
+    // even download it (`--kubernetes-version` must match
+    // `^v\d+\.\d+\.\d+\+k3s\d+$`), unlike the enum-like fields above which
+    // colima's unmarshal step never rejects.
+    if let Some(serde_yaml::Value::String(s)) = mapping_get(k8s, "version") {
+        if !s.is_empty() && !crate::k3s::is_valid_k3s_version_format(s) {
+            issues.push(ConfigIssue::error(
+                "kubernetes.version",
+                format!("\"{s}\" is not a valid k3s version format (expected vX.Y.Z+k3sN)"),
+            ));
+        }
+    }
     check_int(k8s, "port", "kubernetes.port", issues);
     if let Some(args) = mapping_get(k8s, "k3sArgs") {
         if !is_null(args) {
@@ -1010,6 +1024,34 @@ mod validation_tests {
     fn kubernetes_port_accepts_int() {
         let errors = errors_for("kubernetes:\n  port: 6443\n");
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    // --- kubernetes.version format (error, not warning: colima would fail
+    // --- to download a malformed version) -----------------------------------
+
+    #[test]
+    fn kubernetes_version_rejects_malformed_string() {
+        let errors = errors_for("kubernetes:\n  version: v1.30.0\n");
+        assert!(errors.iter().any(|i| i.path == "kubernetes.version"), "{errors:?}");
+    }
+
+    #[test]
+    fn kubernetes_version_accepts_wellformed_string() {
+        let errors = errors_for("kubernetes:\n  version: v1.30.0+k3s1\n");
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn kubernetes_version_accepts_empty_string() {
+        // Empty means "use colima's own default" -- not malformed.
+        let errors = errors_for("kubernetes:\n  version: \"\"\n");
+        assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn kubernetes_version_rejects_garbage() {
+        let errors = errors_for("kubernetes:\n  version: not-a-version\n");
+        assert!(errors.iter().any(|i| i.path == "kubernetes.version"), "{errors:?}");
     }
 
     // --- enums are warnings only, never block saving -----------------------

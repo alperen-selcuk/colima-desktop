@@ -7,6 +7,7 @@ import type {
   ContainerStats,
   EnvInfo,
   Image,
+  K3sVersionsResponse,
   K8sDeployment,
   K8sNode,
   K8sPod,
@@ -224,6 +225,32 @@ export function mockProfileConfigRaw(profile: string): ProfileConfigRaw {
 export function mockValidateProfileConfigRaw(_content: string): ConfigIssue[] {
   return [];
 }
+
+// Realistic k3s_versions response (§6.5), mirroring the shape of a real
+// fetch from https://api.github.com/repos/k3s-io/k3s/releases: newest-first,
+// one row per patch, `latestInMinor` marking the newest patch per minor.
+export const mockK3sVersions: K3sVersionsResponse = {
+  versions: [
+    { version: "v1.37.0+k3s1", minor: "1.37", publishedAt: "2026-09-14T15:50:04Z", latestInMinor: true },
+    { version: "v1.36.4+k3s1", minor: "1.36", publishedAt: "2026-08-27T15:53:55Z", latestInMinor: true },
+    { version: "v1.36.3+k3s1", minor: "1.36", publishedAt: "2026-08-04T19:42:34Z", latestInMinor: false },
+    { version: "v1.35.8+k3s1", minor: "1.35", publishedAt: "2026-08-27T15:06:43Z", latestInMinor: true },
+    { version: "v1.35.7+k3s1", minor: "1.35", publishedAt: "2026-07-29T12:11:02Z", latestInMinor: false },
+    { version: "v1.34.11+k3s1", minor: "1.34", publishedAt: "2026-08-27T15:06:09Z", latestInMinor: true },
+    { version: "v1.34.10+k3s1", minor: "1.34", publishedAt: "2026-07-29T11:40:55Z", latestInMinor: false },
+    { version: "v1.33.13+k3s2", minor: "1.33", publishedAt: "2026-08-04T19:40:10Z", latestInMinor: true },
+    { version: "v1.32.13+k3s1", minor: "1.32", publishedAt: "2026-03-04T18:38:59Z", latestInMinor: true },
+    { version: "v1.31.14+k3s1", minor: "1.31", publishedAt: "2025-11-20T21:45:20Z", latestInMinor: true },
+    { version: "v1.31.2+k3s1", minor: "1.31", publishedAt: "2024-11-14T18:22:10Z", latestInMinor: false },
+    { version: "v1.30.14+k3s2", minor: "1.30", publishedAt: "2025-07-26T02:07:02Z", latestInMinor: true },
+    { version: "v1.29.15+k3s1", minor: "1.29", publishedAt: "2025-03-25T22:09:59Z", latestInMinor: true },
+    { version: "v1.28.15+k3s1", minor: "1.28", publishedAt: "2024-10-26T01:18:18Z", latestInMinor: true },
+  ],
+  colimaDefault: "v1.31.2+k3s1",
+  source: "github",
+  fetchedAt: isoAgo(5 * 60_000),
+  error: null,
+};
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

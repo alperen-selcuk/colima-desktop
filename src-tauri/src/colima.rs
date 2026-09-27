@@ -472,6 +472,12 @@ async fn run_kubernetes_streaming_with_optional_force(
     }
 }
 
+/// Friendly error returned by `kubernetes_action` when the profile isn't
+/// running, instead of letting colima's own (much less clear) error surface.
+fn not_running_message(profile: &str) -> String {
+    format!("{profile} is not running — start it first")
+}
+
 /// `kubernetes_action`: `colima kubernetes <start|stop|reset|delete> -p
 /// <profile>`. `reset`/`delete` add `-f` when the installed CLI accepts it,
 /// retrying without it otherwise: the colima source vendored alongside this
@@ -479,6 +485,10 @@ async fn run_kubernetes_streaming_with_optional_force(
 /// its `cmd/kubernetes.go`), matching the installed colima 0.8.1 on this
 /// machine, but future/other colima builds may add one — so we probe rather
 /// than hard-code either behavior.
+///
+/// Guarded (§6.5) so the frontend never has to interpret colima's own error
+/// text: calling this when the profile isn't running returns
+/// `not_running_message` instead of shelling out at all.
 #[tauri::command]
 pub async fn kubernetes_action(
     app: AppHandle,
@@ -490,6 +500,15 @@ pub async fn kubernetes_action(
     if !["start", "stop", "reset", "delete"].contains(&action.as_str()) {
         return Err(format!("invalid kubernetes action: {action}"));
     }
+
+    let is_running = matches!(
+        exec::run("colima", &["status", "--json", "-p", &profile]).await,
+        Ok(stdout) if serde_json::from_str::<RawProfileStatus>(stdout.trim()).is_ok()
+    );
+    if !is_running {
+        return Err(not_running_message(&profile));
+    }
+
     let _guard = state.try_lock_profile(&profile)?;
     let op = format!("k8s-{action}");
 
@@ -616,5 +635,17 @@ mod tests {
     #[test]
     fn resolve_colima_home_falls_back_to_dot_when_home_missing() {
         assert_eq!(resolve_colima_home(None, None), PathBuf::from("./.colima"));
+    }
+
+    #[test]
+    fn not_running_message_names_the_profile() {
+        assert_eq!(
+            not_running_message("default"),
+            "default is not running — start it first"
+        );
+        assert_eq!(
+            not_running_message("work"),
+            "work is not running — start it first"
+        );
     }
 }

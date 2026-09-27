@@ -6,6 +6,7 @@ import type {
   ContainerStats,
   EnvInfo,
   Image,
+  K3sVersionsResponse,
   K8sDeployment,
   K8sKind,
   K8sNode,
@@ -113,6 +114,8 @@ async function mockInvoke<T>(
       return undefined as unknown as T;
     case "validate_profile_config_raw":
       return mock.mockValidateProfileConfigRaw(args?.content as string) as unknown as T;
+    case "k3s_versions":
+      return mock.mockK3sVersions as unknown as T;
     case "start_profile":
     case "stop_profile":
     case "restart_profile":
@@ -295,6 +298,12 @@ export function saveProfileConfigRaw(profile: string, content: string): Promise<
  * anything. Call this debounced as the user types. */
 export function validateProfileConfigRaw(content: string): Promise<ConfigIssue[]> {
   return invoke<ConfigIssue[]>("validate_profile_config_raw", { content });
+}
+
+/** k3s version picker (§6.5): fetches the list of k3s releases (GitHub, on-disk
+ * cache, or the embedded builtin list), plus colima's own parsed default. */
+export function k3sVersions(forceRefresh: boolean): Promise<K3sVersionsResponse> {
+  return invoke<K3sVersionsResponse>("k3s_versions", { forceRefresh });
 }
 
 export function listContainers(profile: string): Promise<Container[]> {

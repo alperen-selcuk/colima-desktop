@@ -251,3 +251,22 @@ export type TerminalTarget =
   | { kind: "pod"; namespace: string; pod: string; container: string | null };
 
 export type K8sKind = "pod" | "deployment" | "service" | "node";
+
+// ---- k3s version picker (§6.5) ----
+
+export interface K3sVersion {
+  version: string;
+  minor: string; // "1.31"
+  publishedAt: string | null;
+  latestInMinor: boolean;
+}
+
+export type K3sVersionsSource = "github" | "cache" | "builtin";
+
+export interface K3sVersionsResponse {
+  versions: K3sVersion[];
+  colimaDefault: string | null;
+  source: K3sVersionsSource;
+  fetchedAt: string | null;
+  error: string | null;
+}

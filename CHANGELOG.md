@@ -10,8 +10,16 @@ All notable changes to Colima Desktop are documented in this file.
   colima can't load (e.g. `memory: "abc"`, `cpu: 2.5`, an invalid DNS IP) are shown live with jump-to-field
   links and block saving — colima would otherwise ignore the whole file and silently start with defaults.
   Unrecognised enum values are shown as non-blocking warnings.
+- Kubernetes enablement flow: when the machine is stopped, the Kubernetes page offers "Start with Kubernetes…",
+  which opens the configuration editor on the Kubernetes section with Kubernetes pre-enabled (no more raw
+  "not running" error). On a running machine: quick "Enable Kubernetes" (this session) or "Enable permanently…".
+- k3s version picker in the configuration editor and the quick Start dialog: colima's default version, the
+  latest patch of each minor and a searchable list of all k3s releases (fetched from GitHub, cached for 24h,
+  with a built-in fallback list when offline). Malformed versions block saving.
 
 ### Fixed
+
+- The quick Start dialog defaulted Kubernetes to `v1.30.0`, which is not a valid k3s version.
 
 - Homebrew cask passes `brew audit --strict` and `brew style`; install docs include the `brew trust` step
   that Homebrew 7 requires for third-party taps.

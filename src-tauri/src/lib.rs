@@ -8,6 +8,7 @@ mod config_file;
 mod docker;
 mod env;
 mod exec;
+mod k3s;
 mod k8s;
 mod logs;
 mod pty;
@@ -42,6 +43,7 @@ pub fn run() {
             config_file::profile_config_raw,
             config_file::save_profile_config_raw,
             config_file::validate_profile_config_raw,
+            k3s::k3s_versions,
             docker::list_containers,
             docker::container_action,
             docker::container_inspect,

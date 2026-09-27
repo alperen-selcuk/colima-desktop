@@ -24,6 +24,7 @@ import { isTauriRuntime } from "../lib/api";
 import type { ConfigIssue } from "../lib/types";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
+import { K3sVersionPicker } from "../components/K3sVersionPicker";
 import {
   Banner,
   ChipList,
@@ -56,7 +57,7 @@ import {
   type ProvisionRow,
 } from "../lib/colimaConfig";
 
-type SectionId =
+export type SectionId =
   | "resources"
   | "runtime"
   | "kubernetes"
@@ -148,6 +149,14 @@ function isValidIp(v: string): boolean {
   return v.split(".").every((part) => Number(part) <= 255);
 }
 
+/** One `doc.setIn(path, value)` patch applied once on open, counted as an
+ * unsaved change (§6.5) — e.g. jumping here from the Kubernetes page with
+ * `kubernetes.enabled: true` pre-applied. */
+export interface ConfigPatch {
+  path: (string | number)[];
+  value: unknown;
+}
+
 interface MachineConfigDialogProps {
   open: boolean;
   onClose: () => void;
@@ -156,6 +165,12 @@ interface MachineConfigDialogProps {
   /** Whether the target profile is currently running (affects footer action + banners). */
   isRunning: boolean;
   onSaved: (profileName: string) => void;
+  /** Section to land on when the dialog opens (§6.5 entry points from the
+   * Kubernetes page); defaults to "resources" when omitted. */
+  initialSection?: SectionId;
+  /** Patches applied once via `setIn` right after the config loads, counted
+   * as unsaved changes (§6.5, e.g. `kubernetes.enabled: true`). */
+  initialPatch?: ConfigPatch[];
 }
 
 export function MachineConfigDialog({
@@ -164,6 +179,8 @@ export function MachineConfigDialog({
   profileName,
   isRunning,
   onSaved,
+  initialSection,
+  initialPatch,
 }: MachineConfigDialogProps) {
   const toast = useToast();
   const isNew = profileName === null;
@@ -199,13 +216,36 @@ export function MachineConfigDialog({
     enabled: open && isNew,
   });
 
+  const k3sVersionsQuery = useQuery({
+    queryKey: ["k3sVersions"],
+    queryFn: () => api.k3sVersions(false),
+    enabled: open,
+    staleTime: 60 * 60 * 1000, // 1h
+  });
+  const colimaDefaultVersion = k3sVersionsQuery.data?.colimaDefault ?? null;
+
+  // Running-cluster version-change warning (§6.5): only queried when this
+  // profile's Kubernetes is actually running, so opening the dialog for a
+  // stopped machine (or one with k8s off) never fires a k8s API call.
+  // `doc`'s own `kubernetes.enabled` reflects the on-disk config, which is
+  // the best signal we have for "the running machine currently has k8s on"
+  // (the alternative, profile_status, only tells us the machine is running).
+  const k8sEnabledOnDisk = doc ? getIn(doc, ["kubernetes", "enabled"], false) : false;
+  const k8sNodesQuery = useQuery({
+    queryKey: ["k8sNodes", profileName],
+    queryFn: () => api.k8sNodes(profileName ?? ""),
+    enabled: open && !isNew && isRunning && k8sEnabledOnDisk && !!profileName,
+  });
+  const runningK8sVersion = k8sNodesQuery.data?.[0]?.version ?? null;
+
   useEffect(() => {
     if (!open) return;
     setNewName("");
-    setSection("resources");
+    setSection(initialSection ?? "resources");
     setYamlError(null);
     setDockerJsonError(null);
     setIssues([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // Live typed validation (§6.4): mirrors the checks `save_profile_config_raw`
@@ -232,16 +272,70 @@ export function MachineConfigDialog({
     };
   }, [open, doc, yamlText]);
 
+  // Guards `initialPatch` so it's applied exactly once per dialog-open, not
+  // re-applied every time `source` refetches (e.g. react-query background
+  // refresh) while the dialog stays open.
+  const initialPatchApplied = useRef(false);
+  // Whether this open's initialPatch turned Kubernetes on, so the follow-up
+  // effect below knows whether it still needs to prefill the version once
+  // colima's default becomes known (it's usually not known yet on the very
+  // first render, since it comes from its own async query).
+  const pendingKubernetesVersionPrefill = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      initialPatchApplied.current = false;
+      pendingKubernetesVersionPrefill.current = false;
+    }
+  }, [open]);
+
   useEffect(() => {
     const source = isNew ? templateQuery.data : rawQuery.data;
     if (!source) return;
     const parsed = parseConfig(source.content);
-    setDoc(parsed);
+    // initialDoc snapshots the *unpatched* content, so an applied initialPatch
+    // (e.g. kubernetes.enabled: true from the Kubernetes page) is itself
+    // counted in the footer's "N changes", per §6.5.
     setInitialDoc(cloneConfig(parsed));
+    if (initialPatch && initialPatch.length > 0 && !initialPatchApplied.current) {
+      for (const patch of initialPatch) {
+        parsed.setIn(patch.path, patch.value);
+      }
+      // Same prefill-if-empty rule as toggling the Enabled switch by hand
+      // (§6.5): if this patch turned Kubernetes on and no version is set
+      // yet, seed it with colima's own default. `colimaDefaultVersion` may
+      // not have loaded yet, so remember to retry from the effect below.
+      const enabledPatch = initialPatch.some(
+        (p) => p.path.join(".") === "kubernetes.enabled" && p.value === true,
+      );
+      if (enabledPatch && !getIn(parsed, ["kubernetes", "version"], "")) {
+        if (colimaDefaultVersion) {
+          parsed.setIn(["kubernetes", "version"], colimaDefaultVersion);
+        } else {
+          pendingKubernetesVersionPrefill.current = true;
+        }
+      }
+      initialPatchApplied.current = true;
+    }
+    setDoc(parsed);
     setYamlText(stringifyConfig(parsed));
     setDockerJsonText(JSON.stringify(getDockerConfig(parsed), null, 2));
     setVersion((v) => v + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNew, templateQuery.data, rawQuery.data]);
+
+  // Retries the version prefill once colima's default becomes known, for the
+  // common case where `k3sVersionsQuery` resolves after the doc has already
+  // loaded and applied `initialPatch`.
+  useEffect(() => {
+    if (!doc || !colimaDefaultVersion || !pendingKubernetesVersionPrefill.current) return;
+    if (getIn(doc, ["kubernetes", "version"], "")) {
+      pendingKubernetesVersionPrefill.current = false;
+      return;
+    }
+    mutate((d) => setIn(d, ["kubernetes", "version"], colimaDefaultVersion));
+    pendingKubernetesVersionPrefill.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, colimaDefaultVersion]);
 
   const source = isNew ? templateQuery.data : rawQuery.data;
 
@@ -619,17 +713,30 @@ export function MachineConfigDialog({
                 <div className="flex flex-col gap-4">
                   <SectionHeading>Kubernetes</SectionHeading>
                   <FieldRow label="Enabled" yamlKey="kubernetes.enabled" help="Enable a single-node k3s Kubernetes cluster.">
-                    <Switch checked={full.kubernetes.enabled} onChange={(v) => mutate((d) => setIn(d, ["kubernetes", "enabled"], v))} />
+                    <Switch
+                      checked={full.kubernetes.enabled}
+                      onChange={(v) =>
+                        mutate((d) => {
+                          setIn(d, ["kubernetes", "enabled"], v);
+                          // §6.5: prefill colimaDefault when the user toggles k8s
+                          // on and no version is set yet.
+                          if (v && !getIn(d, ["kubernetes", "version"], "") && colimaDefaultVersion) {
+                            setIn(d, ["kubernetes", "version"], colimaDefaultVersion);
+                          }
+                        })
+                      }
+                    />
                   </FieldRow>
                   <FieldRow
                     label="Version"
                     yamlKey="kubernetes.version"
-                    help="Must exactly match a k3s release, e.g. v1.30.0+k3s1."
+                    help="Must exactly match a k3s release, e.g. v1.30.0+k3s1. Leave empty to use colima's own default."
                     invalid={issueForPath("kubernetes.version")?.message}
                   >
-                    <TextInput
+                    <K3sVersionPicker
                       value={full.kubernetes.version}
-                      onChange={(e) => mutate((d) => setIn(d, ["kubernetes", "version"], e.target.value))}
+                      onChange={(v) => mutate((d) => setIn(d, ["kubernetes", "version"], v))}
+                      runningVersion={runningK8sVersion}
                     />
                   </FieldRow>
                   <FieldRow

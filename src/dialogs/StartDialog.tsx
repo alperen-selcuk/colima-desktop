@@ -6,6 +6,8 @@ import type { StartOptions } from "../lib/types";
 import { Dialog } from "../components/Dialog";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
+import { K3sVersionPicker } from "../components/K3sVersionPicker";
+import { isValidK3sVersionFormat } from "../lib/k3s";
 
 interface StartDialogProps {
   open: boolean;
@@ -42,7 +44,7 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
   const [rosetta, setRosetta] = useState(false);
   const [networkAddress, setNetworkAddress] = useState(false);
   const [kubernetes, setKubernetes] = useState(false);
-  const [kubernetesVersion, setKubernetesVersion] = useState("v1.30.0");
+  const [kubernetesVersion, setKubernetesVersion] = useState("");
   const [activate, setActivate] = useState(true);
   const [mounts, setMounts] = useState<string[]>([]);
   const [mountInput, setMountInput] = useState("");
@@ -56,6 +58,14 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
     queryFn: () => api.profileConfig(profileName),
     enabled: open && !isNew && !!profileName,
   });
+
+  const k3sVersionsQuery = useQuery({
+    queryKey: ["k3sVersions"],
+    queryFn: () => api.k3sVersions(false),
+    enabled: open,
+    staleTime: 60 * 60 * 1000, // 1h
+  });
+  const colimaDefaultVersion = k3sVersionsQuery.data?.colimaDefault ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -71,7 +81,7 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
       setRosetta(false);
       setNetworkAddress(false);
       setKubernetes(false);
-      setKubernetesVersion("v1.30.0");
+      setKubernetesVersion("");
       setActivate(true);
       setMounts([]);
     } else if (configQuery.data) {
@@ -86,16 +96,32 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
       setRosetta(c.rosetta);
       setNetworkAddress(c.networkAddress);
       setKubernetes(c.kubernetesEnabled);
-      setKubernetesVersion(c.kubernetesVersion || "v1.30.0");
+      setKubernetesVersion(c.kubernetesVersion || "");
       setMounts(c.mounts);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isNew, profileName, configQuery.data, isLinux, envQuery.data]);
 
+  // §6.5: prefill colimaDefault when the user turns Kubernetes on with an
+  // empty version (covers both ticking the checkbox by hand, and colima's
+  // default becoming known after the checkbox was already ticked).
+  useEffect(() => {
+    if (kubernetes && !kubernetesVersion && colimaDefaultVersion) {
+      setKubernetesVersion(colimaDefaultVersion);
+    }
+  }, [kubernetes, kubernetesVersion, colimaDefaultVersion]);
+
+  const kubernetesVersionInvalid =
+    kubernetes && kubernetesVersion.length > 0 && !isValidK3sVersionFormat(kubernetesVersion);
+
   const handleStart = async () => {
     const targetName = isNew ? name.trim() : profileName;
     if (!targetName) {
       toast.error("Machine name is required");
+      return;
+    }
+    if (kubernetesVersionInvalid) {
+      toast.error("Kubernetes version is not a valid k3s version format (expected vX.Y.Z+k3sN)");
       return;
     }
     const options: StartOptions = {
@@ -145,7 +171,7 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleStart} disabled={busy}>
+          <Button variant="primary" onClick={handleStart} disabled={busy || kubernetesVersionInvalid}>
             {busy ? "Starting…" : "Start"}
           </Button>
         </>
@@ -256,12 +282,7 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
           {kubernetes && (
             <div className="mt-2">
               <Field label="Kubernetes version">
-                <input
-                  value={kubernetesVersion}
-                  onChange={(e) => setKubernetesVersion(e.target.value)}
-                  className={inputClass}
-                  style={inputStyle}
-                />
+                <K3sVersionPicker value={kubernetesVersion} onChange={setKubernetesVersion} />
               </Field>
             </div>
           )}

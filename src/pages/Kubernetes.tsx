@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Boxes, ChevronDown, RotateCw, ScrollText, TerminalSquare, Trash2 } from "lucide-react";
+import { Boxes, ChevronDown, Rocket, RotateCw, ScrollText, Settings2, TerminalSquare, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
 import type { K8sKind, ProfileStatus } from "../lib/types";
 import { relativeAge } from "../lib/format";
@@ -19,6 +19,17 @@ type Tab = "pods" | "deployments" | "services" | "nodes";
 interface KubernetesPageProps {
   profile: string;
   status: ProfileStatus | null | undefined;
+  /** Whether a lifecycle op (start/stop/…) is in flight for this profile. */
+  busy: boolean;
+  /** Plain "Start" (existing lifecycle), for the not-running empty state. */
+  onStart: () => void;
+  /** Opens the configuration editor on the Kubernetes section with
+   * `kubernetes.enabled: true` pre-applied, for "Start with Kubernetes…"
+   * (machine not running). */
+  onStartWithKubernetes: () => void;
+  /** Same configuration editor entry point, for "Enable permanently…"
+   * (machine running, k8s off). */
+  onEnablePermanently: () => void;
 }
 
 interface Selection {
@@ -28,7 +39,14 @@ interface Selection {
   containers?: string[];
 }
 
-export function KubernetesPage({ profile, status }: KubernetesPageProps) {
+export function KubernetesPage({
+  profile,
+  status,
+  busy,
+  onStart,
+  onStartWithKubernetes,
+  onEnablePermanently,
+}: KubernetesPageProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const dock = useDock();
@@ -40,6 +58,9 @@ export function KubernetesPage({ profile, status }: KubernetesPageProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"reset" | "delete" | null>(null);
 
+  // §6.5 state machine, based only on `status` (never guess from `Profile.status`
+  // — `profile_status` returning null IS "not running", see §4).
+  const machineRunning = status != null;
   const enabled = status?.kubernetes === true;
 
   const namespacesQuery = useQuery({
@@ -77,10 +98,18 @@ export function KubernetesPage({ profile, status }: KubernetesPageProps) {
     refetchInterval: enabled && tab === "nodes" ? 3000 : false,
   });
 
-  const handleEnable = async () => {
+  // Quick "Enable Kubernetes" (§6.5): this-session-only, since it calls
+  // `kubernetes_action` directly rather than persisting `kubernetes.enabled`
+  // into colima.yaml. Only ever called while `machineRunning` (the button
+  // that triggers it doesn't render otherwise), but the guard is repeated
+  // here as defense-in-depth — and the backend itself now refuses the call
+  // with a friendly error rather than colima's raw output either way (§6.5).
+  const handleEnableQuick = async () => {
+    if (!machineRunning) return;
     try {
       await api.kubernetesAction(profile, "start");
-      toast.success("Enabling Kubernetes");
+      toast.success("Enabling Kubernetes for this session");
+      queryClient.invalidateQueries({ queryKey: ["profileStatus", profile] });
     } catch (e) {
       toast.error("Failed to enable Kubernetes", String(e));
     }
@@ -117,16 +146,46 @@ export function KubernetesPage({ profile, status }: KubernetesPageProps) {
     }
   };
 
+  // Machine not running (§6.5): no error toast, no `kubernetes_action` call —
+  // just an empty state pointing at the two ways to get a running machine
+  // with Kubernetes on.
+  if (!machineRunning) {
+    return (
+      <EmptyState
+        icon={Boxes}
+        title="Kubernetes needs the machine to be running"
+        message={`Start ${profile} with Kubernetes enabled?`}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="primary" size="sm" onClick={onStartWithKubernetes} disabled={busy}>
+              <Rocket size={12} /> {busy ? "Starting…" : "Start with Kubernetes…"}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onStart} disabled={busy}>
+              {busy ? "Starting…" : "Start"}
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
+
+  // Running, Kubernetes off (§6.5): quick enable (this session only) vs.
+  // enable permanently via the configuration editor.
   if (!enabled) {
     return (
       <EmptyState
         icon={Boxes}
         title="Kubernetes is not enabled for this machine"
-        message="Enable Kubernetes to browse pods, deployments, services and nodes. To keep Kubernetes enabled across restarts, enable it in the machine's Start settings."
+        message="Enable Kubernetes to browse pods, deployments, services and nodes. Quick-enabling only lasts for this session; enabling permanently persists it to the machine's configuration."
         action={
-          <Button variant="primary" size="sm" onClick={handleEnable}>
-            Enable Kubernetes
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="primary" size="sm" onClick={handleEnableQuick}>
+              Enable Kubernetes
+            </Button>
+            <Button variant="secondary" size="sm" onClick={onEnablePermanently}>
+              <Settings2 size={12} /> Enable permanently…
+            </Button>
+          </div>
         }
       />
     );

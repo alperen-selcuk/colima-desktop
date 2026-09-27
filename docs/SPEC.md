@@ -305,6 +305,34 @@ Footer buttons: `Reset to template`, `Save`, primary `Save & Start` (stopped) / 
 Entry points: Machines card Start becomes a split button (`Start` | ▾ `Start with configuration…`), running cards get `Configure…`,
 "New machine" opens this dialog with a name field (source template). Top bar gets the same split button.
 
+### 6.5 Kubernetes enablement flow & k3s version picker
+
+Kubernetes page states (selected profile):
+- **Machine not running** (status null / not Running): no error toast. Empty state: "Kubernetes needs the machine to be running.
+  Start `<profile>` with Kubernetes enabled?" Primary button **Start with Kubernetes…** → opens the configuration editor (§6.4)
+  on the *Kubernetes* section with `kubernetes.enabled: true` pre-applied as an unsaved change (and `kubernetes.version` set to
+  the colima default if empty); the user reviews and clicks Save & Start. Secondary: plain **Start** (existing lifecycle).
+  If a lifecycle op is in flight for the profile, show "Starting…" instead.
+- **Running, Kubernetes off**: **Enable Kubernetes** (quick: `kubernetes_action start`, this session only — say so) and
+  **Enable permanently…** → configuration editor on the Kubernetes section with `enabled: true` pre-applied → Save & Restart.
+- Never call `kubernetes_action` when the machine isn't running (also guard in the backend: return a friendly error
+  "`<profile>` is not running — start it first" instead of colima's raw output).
+The configuration editor accepts `initialSection` and `initialPatch` (list of `{path, value}` applied via `setIn` on open, counted as changes).
+
+k3s version picker — new backend command:
+| Command | Args | Returns | Implementation |
+|---|---|---|---|
+| `k3s_versions` | `forceRefresh: boolean` | `{ versions: K3sVersion[], colimaDefault: string \| null, source: "github" \| "cache" \| "builtin", fetchedAt: string \| null, error: string \| null }` | Fetch `https://api.github.com/repos/k3s-io/k3s/releases?per_page=100` (2 pages) with `reqwest` (rustls, 10s timeout, `User-Agent: colima-desktop`); keep non-draft, non-prerelease tags matching `^v\d+\.\d+\.\d+\+k3s\d+$`; sort semver-desc. Cache to `<app_cache_dir>/k3s-versions.json` for 24h (serve cache when fresh unless forceRefresh; serve stale cache on network error with `error` set). Fallback: a builtin list embedded in the binary (latest patch of each minor ≥ 1.28 at build time). `colimaDefault` parsed from `colima start --help` (`--kubernetes-version ... (default "vX")`), cached per process. |
+`K3sVersion = { version: string, minor: string /* "1.31" */, publishedAt: string \| null, latestInMinor: boolean }`.
+
+Frontend `K3sVersionPicker` (used in the config editor's Kubernetes section AND the quick StartDialog): combobox input
+(free text allowed) + dropdown: **Recommended** = colimaDefault (badge "colima default"); **Latest per minor** (newest first,
+e.g. v1.34.1+k3s1 … one row per minor, with release date); **All versions** behind a search filter. Shows source/"updated x ago"
+and a refresh button; offline → small note "showing built-in list". Validation: format `^v\d+\.\d+\.\d+\+k3s\d+$` is an
+error (block save); a well-formed version not in the known list is a warning. When the user toggles `kubernetes.enabled` on and
+the version is empty, prefill colimaDefault. For an existing running cluster, if the chosen version differs from the running
+node version (from `k8s_nodes`), warn: "Changing the version of an existing cluster may require Kubernetes → Reset".
+
 Logo: `public/logo.svg` (transparent background, brand green, works on dark & light) is used in the sidebar header and README.
 
 Toasts for errors/success (simple self-made toast stack). Confirm dialogs for destructive ops. Keyboard: `Cmd/Ctrl+K` focuses search on list pages.
