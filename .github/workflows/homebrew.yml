@@ -79,9 +79,11 @@ jobs:
 
           asset_name=$(basename "$asset_url")
 
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "asset_url=$asset_url" >> "$GITHUB_OUTPUT"
-          echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "asset_url=$asset_url"
+            echo "asset_name=$asset_name"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download asset and compute sha256
         if: steps.check-token.outputs.skip == 'false'

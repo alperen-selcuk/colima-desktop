@@ -31,6 +31,12 @@ jobs:
       - name: bash -n syntax check
         run: bash -n scripts/install.sh
 
+      # Catches GitHub-specific workflow errors (e.g. `secrets` in `if:`) that plain YAML lint misses.
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
   build:
     name: Build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
