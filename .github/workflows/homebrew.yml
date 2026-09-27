@@ -1,0 +1,154 @@
+name: Update Homebrew Cask
+
+# Updates the `colima-desktop` cask in the alperen-selcuk/homebrew-tap repo
+# whenever a GitHub Release on this repo is published (or on demand for a
+# given tag). It finds the universal macOS .dmg asset of that release,
+# computes its sha256, renders packaging/homebrew/colima-desktop.rb.tmpl and
+# commits the result as Casks/colima-desktop.rb on the tap repo.
+#
+# Requires a fine-grained PAT stored as the HOMEBREW_TAP_TOKEN secret, scoped
+# to Contents: read/write on alperen-selcuk/homebrew-tap only. See
+# docs/RELEASING.md for how to create it. If the secret is missing, this
+# workflow prints a warning and exits successfully (it does not fail CI/the
+# release just because the tap isn't wired up yet).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to the tap (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TAP_REPO: alperen-selcuk/homebrew-tap
+
+jobs:
+  update-cask:
+    name: Update cask in homebrew-tap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check for HOMEBREW_TAP_TOKEN secret
+        id: check-token
+        env:
+          TOKEN_SET: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        run: |
+          if [ "$TOKEN_SET" != "true" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN secret is not set on this repository. Skipping Homebrew tap update. See docs/RELEASING.md to configure it."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve release tag
+        if: steps.check-token.outputs.skip == 'false'
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Find universal .dmg asset
+        if: steps.check-token.outputs.skip == 'false'
+        id: asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          version="${TAG#v}"
+
+          asset_url=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets \
+            --jq '.assets[] | select(.name | test("\\.dmg$")) | .url' | head -n1)
+
+          if [ -z "$asset_url" ]; then
+            echo "::error::No .dmg asset found on release $TAG"
+            exit 1
+          fi
+
+          asset_name=$(basename "$asset_url")
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "asset_url=$asset_url" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
+
+      - name: Download asset and compute sha256
+        if: steps.check-token.outputs.skip == 'false'
+        id: sha
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASSET_URL: ${{ steps.asset.outputs.asset_url }}
+          ASSET_NAME: ${{ steps.asset.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -H "Accept: application/octet-stream" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "$ASSET_URL" -o "$ASSET_NAME"
+          sha256=$(sha256sum "$ASSET_NAME" | cut -d' ' -f1)
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Render cask
+        if: steps.check-token.outputs.skip == 'false'
+        env:
+          VERSION: ${{ steps.asset.outputs.version }}
+          SHA256: ${{ steps.sha.outputs.sha256 }}
+          ASSET_NAME: ${{ steps.asset.outputs.asset_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          download_url="https://github.com/${{ github.repository }}/releases/download/${TAG}/${ASSET_NAME}"
+
+          mkdir -p rendered/Casks
+          sed \
+            -e "s|__VERSION__|${VERSION}|g" \
+            -e "s|__SHA256__|${SHA256}|g" \
+            -e "s|__URL__|${download_url}|g" \
+            packaging/homebrew/colima-desktop.rb.tmpl > rendered/Casks/colima-desktop.rb
+
+          cat rendered/Casks/colima-desktop.rb
+
+      - name: Ruby syntax check
+        if: steps.check-token.outputs.skip == 'false'
+        run: ruby -c rendered/Casks/colima-desktop.rb
+
+      - name: Checkout homebrew-tap
+        if: steps.check-token.outputs.skip == 'false'
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.TAP_REPO }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Commit and push cask update
+        if: steps.check-token.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p homebrew-tap/Casks
+          cp rendered/Casks/colima-desktop.rb homebrew-tap/Casks/colima-desktop.rb
+
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- Casks/colima-desktop.rb; then
+            echo "No changes to Casks/colima-desktop.rb, skipping commit."
+            exit 0
+          fi
+
+          git add Casks/colima-desktop.rb
+          git commit -m "colima-desktop ${TAG}"
+          git push origin HEAD

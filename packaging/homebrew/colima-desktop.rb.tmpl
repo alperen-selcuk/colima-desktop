@@ -1,0 +1,42 @@
+cask "colima-desktop" do
+  version "__VERSION__"
+  sha256 "__SHA256__"
+
+  url "__URL__"
+  name "Colima Desktop"
+  desc "Desktop GUI for managing Colima container runtimes"
+  homepage "https://github.com/alperen-selcuk/colima-desktop"
+
+  depends_on macos: ">= :big_sur"
+  depends_on formula: "colima"
+  depends_on formula: "docker"
+
+  app "Colima Desktop.app"
+
+  # The current builds are unsigned/unnotarized (no Apple Developer ID is
+  # configured yet), so Gatekeeper quarantines the app on first launch.
+  # Remove this postflight once release builds are signed and notarized.
+  postflight do
+    system_command "/usr/bin/xattr",
+                    args: ["-dr", "com.apple.quarantine", "#{appdir}/Colima Desktop.app"],
+                    sudo: false
+  end
+
+  uninstall quit: "dev.colima.desktop"
+
+  zap trash: [
+    "~/Library/Application Support/dev.colima.desktop",
+    "~/Library/Caches/dev.colima.desktop",
+    "~/Library/WebKit/dev.colima.desktop",
+    "~/Library/Preferences/dev.colima.desktop.plist",
+    "~/Library/Saved Application State/dev.colima.desktop.savedState",
+  ]
+
+  caveats <<~EOS
+    Colima Desktop drives the `colima` CLI and needs it (plus `docker`) on your PATH;
+    both are installed automatically as dependencies of this cask.
+
+    For the Kubernetes view, also install kubectl:
+      brew install kubectl
+  EOS
+end

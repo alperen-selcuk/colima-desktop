@@ -1,5 +1,9 @@
 # Colima Desktop
 
+<p align="center">
+  <img src="docs/assets/logo-256.png" alt="Colima Desktop logo" width="128">
+</p>
+
 [![CI](https://github.com/alperen-selcuk/colima-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/alperen-selcuk/colima-desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
@@ -9,6 +13,19 @@ A desktop app for [Colima](https://github.com/abiosoft/colima) on macOS & Linux.
 > project. It is **not affiliated with, endorsed by, or maintained by** the Colima maintainers — it simply
 > uses Colima as its engine. Bu proje Colima'nın resmi bir parçası değildir; Colima'yı arka planda motor
 > olarak kullanan bağımsız bir topluluk projesidir.
+
+## Install / Kurulum
+
+```sh
+# macOS — Homebrew
+brew tap alperen-selcuk/tap && brew install --cask colima-desktop
+
+# macOS / Linux — install script
+curl -fsSL https://raw.githubusercontent.com/alperen-selcuk/colima-desktop/main/scripts/install.sh | bash
+```
+
+See [docs/INSTALL.md](docs/INSTALL.md) for manual downloads, uninstall instructions, and details
+(TR + EN).
 
 ## Türkçe
 
