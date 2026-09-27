@@ -84,6 +84,7 @@ pub fn run() {
         .run(|app_handle, event| {
             match event {
                 // macOS: clicking the dock icon re-shows the window.
+                #[cfg(target_os = "macos")]
                 RunEvent::Reopen { .. } => {
                     tray::show_main_window(app_handle);
                 }
