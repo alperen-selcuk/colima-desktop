@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f2f2b"/>
+      <stop offset="100%" stop-color="#0a1f1c"/>
+    </linearGradient>
+    <linearGradient id="cubeTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="100%" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <linearGradient id="cubeLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </linearGradient>
+    <linearGradient id="cubeRight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background rounded square -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#bg)"/>
+
+  <!-- isometric container/cube mark -->
+  <g transform="translate(512 500)">
+    <!-- top face -->
+    <path d="M0 -260 L225 -132 L0 -4 L-225 -132 Z" fill="url(#cubeTop)"/>
+    <!-- left face -->
+    <path d="M-225 -132 L0 -4 L0 252 L-225 124 Z" fill="url(#cubeLeft)"/>
+    <!-- right face -->
+    <path d="M225 -132 L0 -4 L0 252 L225 124 Z" fill="url(#cubeRight)"/>
+
+    <!-- panel lines on top face for a "container" feel -->
+    <g stroke="#0a3b35" stroke-width="6" stroke-linecap="round" opacity="0.55">
+      <line x1="-112" y1="-198" x2="0" y2="-132"/>
+      <line x1="0" y1="-132" x2="112" y2="-198"/>
+      <line x1="-112" y1="-66" x2="0" y2="-4"/>
+      <line x1="0" y1="-4" x2="112" y2="-66"/>
+    </g>
+
+    <!-- highlight sweep -->
+    <path d="M0 -260 L225 -132 L0 -4 L-225 -132 Z" fill="#ffffff" opacity="0.06"/>
+  </g>
+</svg>
