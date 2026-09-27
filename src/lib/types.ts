@@ -193,6 +193,15 @@ export interface OpLog {
   line: string;
 }
 
+export type ConfigSource = "profile" | "template" | "builtin";
+
+export interface ProfileConfigRaw {
+  content: string;
+  source: ConfigSource;
+  path: string;
+  exists: boolean;
+}
+
 export interface TerminalOutput {
   sessionId: string;
   data: string; // base64 of raw PTY bytes

@@ -41,14 +41,7 @@ export function Sidebar({ page, onNavigate, kubernetesEnabled }: SidebarProps) {
       style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
     >
       <div className="flex items-center gap-2 px-4 py-4">
-        <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
-          <rect width="32" height="32" rx="7" fill="var(--surface-0)" />
-          <path
-            d="M16 6c-5.523 0-10 4.477-10 10s4.477 10 10 10c3.5 0 6.59-1.8 8.39-4.52a1 1 0 0 0-1.5-1.31A8 8 0 1 1 24 16a1 1 0 0 0 2 0c0-5.523-4.477-10-10-10Z"
-            fill="var(--accent)"
-          />
-          <circle cx="16" cy="16" r="3.2" fill="var(--accent)" />
-        </svg>
+        <img src="/logo.svg" alt="" width={22} height={22} />
         <span className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
           Colima Desktop
         </span>

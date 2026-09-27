@@ -1,8 +1,9 @@
-import { ChevronDown, Play, RotateCw, Square, TerminalSquare } from "lucide-react";
+import { ChevronDown, RotateCw, Settings, Square, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 import type { Profile, ProfileStatus } from "../lib/types";
 import { StatusDot, statusTone } from "./StatusDot";
 import { Button } from "./Button";
+import { SplitStartButton } from "./SplitStartButton";
 
 interface TopBarProps {
   profiles: Profile[];
@@ -12,6 +13,8 @@ interface TopBarProps {
   currentProfile: Profile | undefined;
   busy: boolean;
   onStart: () => void;
+  onConfigure: () => void;
+  onQuickStartOptions: () => void;
   onStop: () => void;
   onRestart: () => void;
   onTerminal: () => void;
@@ -25,6 +28,8 @@ export function TopBar({
   currentProfile,
   busy,
   onStart,
+  onConfigure,
+  onQuickStartOptions,
   onStop,
   onRestart,
   onTerminal,
@@ -103,13 +108,21 @@ export function TopBar({
 
       <div className="ml-auto flex items-center gap-2">
         {running ? (
-          <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
-            <Square size={12} /> Stop
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
+              <Square size={12} /> Stop
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onConfigure} disabled={busy} title="Configure…">
+              <Settings size={12} /> Configure…
+            </Button>
+          </>
         ) : (
-          <Button variant="primary" size="sm" onClick={onStart} disabled={busy}>
-            <Play size={12} /> Start
-          </Button>
+          <SplitStartButton
+            onQuickStart={onStart}
+            onConfigure={onConfigure}
+            onQuickStartOptions={onQuickStartOptions}
+            disabled={busy}
+          />
         )}
         <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
           <RotateCw size={12} />

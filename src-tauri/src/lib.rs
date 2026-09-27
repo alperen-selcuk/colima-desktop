@@ -4,6 +4,7 @@
 //! project root for the full contract this crate implements.
 
 mod colima;
+mod config_file;
 mod docker;
 mod env;
 mod exec;
@@ -25,6 +26,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             env::env_info,
@@ -37,6 +39,8 @@ pub fn run() {
             colima::delete_profile,
             colima::kubernetes_action,
             colima::busy_profiles,
+            config_file::profile_config_raw,
+            config_file::save_profile_config_raw,
             docker::list_containers,
             docker::container_action,
             docker::container_inspect,

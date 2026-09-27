@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Database, HardDrive, Plus, RotateCw, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { Cpu, Database, HardDrive, Plus, RotateCw, Settings, Square, TerminalSquare, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
 import type { Profile } from "../lib/types";
 import { formatBytes } from "../lib/format";
 import { StatusDot, statusTone } from "../components/StatusDot";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SplitStartButton } from "../components/SplitStartButton";
 import { useToast } from "../components/Toasts";
 import { useDock } from "../lib/useDock";
 
@@ -16,6 +17,8 @@ interface MachinesPageProps {
   selected: string | null;
   onSelect: (name: string) => void;
   onStartProfile: (name: string) => void;
+  onConfigureProfile: (name: string) => void;
+  onQuickStartOptions: (name: string) => void;
   onNewMachine: () => void;
 }
 
@@ -25,6 +28,8 @@ function MachineCard({
   selected,
   onSelect,
   onStart,
+  onConfigure,
+  onQuickStartOptions,
   onStop,
   onRestart,
   onDelete,
@@ -35,6 +40,8 @@ function MachineCard({
   selected: boolean;
   onSelect: () => void;
   onStart: () => void;
+  onConfigure: () => void;
+  onQuickStartOptions: () => void;
   onStop: () => void;
   onRestart: () => void;
   onDelete: () => void;
@@ -115,13 +122,21 @@ function MachineCard({
         onClick={(e) => e.stopPropagation()}
       >
         {running ? (
-          <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
-            <Square size={11} /> Stop
-          </Button>
+          <>
+            <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
+              <Square size={11} /> Stop
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onConfigure} disabled={busy} title="Configure…">
+              <Settings size={11} /> Configure…
+            </Button>
+          </>
         ) : (
-          <Button variant="primary" size="sm" onClick={onStart} disabled={busy}>
-            Start
-          </Button>
+          <SplitStartButton
+            onQuickStart={onStart}
+            onConfigure={onConfigure}
+            onQuickStartOptions={onQuickStartOptions}
+            disabled={busy}
+          />
         )}
         <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
           <RotateCw size={11} />
@@ -143,6 +158,8 @@ export function MachinesPage({
   selected,
   onSelect,
   onStartProfile,
+  onConfigureProfile,
+  onQuickStartOptions,
   onNewMachine,
 }: MachinesPageProps) {
   const toast = useToast();
@@ -210,6 +227,8 @@ export function MachinesPage({
             selected={p.name === selected}
             onSelect={() => onSelect(p.name)}
             onStart={() => onStartProfile(p.name)}
+            onConfigure={() => onConfigureProfile(p.name)}
+            onQuickStartOptions={() => onQuickStartOptions(p.name)}
             onStop={() => setConfirmStop(p.name)}
             onRestart={() => handleRestart(p.name)}
             onDelete={() => setConfirmDelete(p.name)}

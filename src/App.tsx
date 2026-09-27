@@ -10,6 +10,7 @@ import { StatusBar } from "./components/StatusBar";
 import { Dock } from "./components/Dock";
 import { ToastProvider, useToast } from "./components/Toasts";
 import { StartDialog } from "./dialogs/StartDialog";
+import { MachineConfigDialog } from "./dialogs/MachineConfigDialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { MachinesPage } from "./pages/Machines";
 import { ContainersPage } from "./pages/Containers";
@@ -21,6 +22,9 @@ import { SetupPage } from "./pages/Setup";
 function AppShell() {
   const [page, setPage] = useState<Page>("machines");
   const [startDialogProfile, setStartDialogProfile] = useState<string | null>(null);
+  // Machine configuration editor (§6.4): `undefined` = closed, `null` = new
+  // machine, a string = editing that existing profile's config.
+  const [configDialogProfile, setConfigDialogProfile] = useState<string | null | undefined>(undefined);
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -91,6 +95,11 @@ function AppShell() {
     setStartDialogProfile(selected);
   };
 
+  const handleConfigure = () => {
+    if (!selected) return;
+    setConfigDialogProfile(selected);
+  };
+
   const handleStop = () => {
     if (!selected) return;
     setConfirmStop(selected);
@@ -143,7 +152,9 @@ function AppShell() {
             selected={selected}
             onSelect={setSelected}
             onStartProfile={(name) => setStartDialogProfile(name)}
-            onNewMachine={() => setStartDialogProfile("__new__")}
+            onConfigureProfile={(name) => setConfigDialogProfile(name)}
+            onQuickStartOptions={(name) => setStartDialogProfile(name)}
+            onNewMachine={() => setConfigDialogProfile(null)}
           />
         );
       case "containers":
@@ -174,6 +185,8 @@ function AppShell() {
           currentProfile={currentProfile}
           busy={isBusy}
           onStart={handleStart}
+          onConfigure={handleConfigure}
+          onQuickStartOptions={handleStart}
           onStop={handleStop}
           onRestart={handleRestart}
           onTerminal={handleTerminal}
@@ -197,6 +210,22 @@ function AppShell() {
         onStarted={(name) => {
           setSelected(name);
           queryClient.invalidateQueries({ queryKey: ["profiles"] });
+        }}
+      />
+
+      <MachineConfigDialog
+        open={configDialogProfile !== undefined}
+        profileName={configDialogProfile ?? null}
+        isRunning={
+          configDialogProfile != null &&
+          profiles.find((p) => p.name === configDialogProfile)?.status === "Running"
+        }
+        onClose={() => setConfigDialogProfile(undefined)}
+        onSaved={(name) => {
+          setSelected(name);
+          queryClient.invalidateQueries({ queryKey: ["profiles"] });
+          queryClient.invalidateQueries({ queryKey: ["profileStatus"] });
+          queryClient.invalidateQueries({ queryKey: ["busyProfiles"] });
         }}
       />
 

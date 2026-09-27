@@ -272,6 +272,41 @@ The sidebar footer shows `Colima Desktop v0.1.0` (version injected at build time
 — it must NOT show the detected colima version. The detected colima/docker/kubectl versions appear only on the Setup/About view.
 Versions are kept in sync at `0.1.0` in package.json, src-tauri/Cargo.toml and src-tauri/tauri.conf.json.
 
+### 6.4 Machine configuration editor ("Start with configuration…") — v0.1.0 addition
+Replaces the need for `colima start --edit` (which opens `$EDITOR` in a terminal). A full-screen dialog that edits the
+profile's `colima.yaml` with buttons/toggles/inputs for **every** option, preserving the file's comments and unknown keys.
+
+Backend (new module `src-tauri/src/config_file.rs`):
+| Command | Args | Returns | Implementation |
+|---|---|---|---|
+| `profile_config_raw` | `profile` | `{ content: string, source: "profile" \| "template" \| "builtin", path: string, exists: boolean }` | First existing of: `<colimaHome>/<profile>/colima.yaml` (source `profile`), `<colimaHome>/_templates/default.yaml` (source `template`, = `colima template`), else the upstream default template embedded in the binary via `include_str!` (copy of colima's `embedded/defaults/colima.yaml`, MIT, attribution comment) (source `builtin`). `path` is always the profile file path; `exists` whether it exists. |
+| `save_profile_config_raw` | `profile, content` | `void` | Validate profile name; `serde_yaml` must parse it into a mapping (else `Err("invalid YAML: ...")`). Create the profile dir if missing; if the file exists, copy it to `colima.yaml.bak`; write atomically (temp file in same dir + rename). |
+Starting with the saved config = `start_profile(profile, {})` (no flags → colima reads the file; never pass flags from this screen).
+Colima parses non-strictly, so keys unknown to the installed colima version are ignored, not errors.
+
+Frontend: `src/lib/colimaConfig.ts` wraps `yaml` (eemeli/yaml) `parseDocument` → typed getters and `doc.setIn(path, value)` setters,
+serializing with `String(doc)` so comments/ordering/unknown keys survive. Unit-tested (round-trip keeps comments; set nested keys;
+create missing maps; lists of objects).
+
+Dialog layout: left section nav, right form, sticky footer. Sections & keys:
+- **Resources**: `cpu` (stepper), `memory` GiB (float), `disk` GiB (warn: cannot shrink an existing disk), `rootDisk`, `cpuType`, `arch` (host|aarch64|x86_64), `hostname`.
+- **Runtime**: `runtime` (docker|containerd|incus — segmented), `autoActivate`, `modelRunner` (docker|ramalama), `docker` (daemon.json — JSON editor with validation, e.g. insecure-registries, registry-mirrors quick-add chips).
+- **Kubernetes**: `kubernetes.enabled`, `kubernetes.version`, `kubernetes.k3sArgs` (list editor with quick toggles for `--disable=traefik`, `--disable=servicelb`, `--disable=metrics-server`, `--disable=coredns`, `--disable=local-storage`), `kubernetes.port`.
+- **Virtual machine**: `vmType` (vz|qemu|krunkit; vz hidden on Linux), `rosetta` (macOS+vz), `binfmt`, `nestedVirtualization`, `portForwarder` (ssh|grpc), `diskImage`, `diskImageMirror`, `forceDiskImage`.
+- **Network**: `network.address`, `network.mode` (shared|bridged), `network.interface`, `network.subnet`, `network.preferredRoute`, `network.hostAddresses`, `network.gatewayAddress`, `network.nat66Prefix`, `network.dns` (IP list), `network.dnsHosts` (key→value map).
+- **Mounts**: `mountType` (sshfs|9p|virtiofs), `mountInotify`, `mounts` (rows: location [folder picker via `@tauri-apps/plugin-dialog`], mountPoint, writable).
+- **SSH**: `sshConfig`, `sshPort`, `forwardAgent`.
+- **Environment**: `env` (key→value map).
+- **Provision**: `provision` (rows: mode system|user, script — monospace textarea).
+- **YAML**: raw editor (monospace textarea with line numbers), two-way synced with the form; parse errors shown inline and block saving.
+Each field shows its YAML key and a one-line help. Changed fields get a subtle "modified" marker; footer shows "N changes".
+Warnings banner when changing `arch`, `runtime` or `vmType` of an existing machine ("requires deleting the machine").
+Footer buttons: `Reset to template`, `Save`, primary `Save & Start` (stopped) / `Save & Restart` (running; stop then start).
+Entry points: Machines card Start becomes a split button (`Start` | ▾ `Start with configuration…`), running cards get `Configure…`,
+"New machine" opens this dialog with a name field (source template). Top bar gets the same split button.
+
+Logo: `public/logo.svg` (transparent background, brand green, works on dark & light) is used in the sidebar header and README.
+
 Toasts for errors/success (simple self-made toast stack). Confirm dialogs for destructive ops. Keyboard: `Cmd/Ctrl+K` focuses search on list pages.
 Do not use `window.confirm`/`alert` (not reliable in webviews) — use in-app dialogs.
 

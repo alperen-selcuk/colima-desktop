@@ -17,6 +17,7 @@ import type {
   OpLog,
   Profile,
   ProfileConfig,
+  ProfileConfigRaw,
   ProfileStatus,
   PruneTarget,
   RunOptions,
@@ -105,6 +106,10 @@ async function mockInvoke<T>(
       return (mock.mockProfileStatus[profile] ?? null) as unknown as T;
     case "profile_config":
       return (mock.mockProfileConfig[profile] ?? null) as unknown as T;
+    case "profile_config_raw":
+      return mock.mockProfileConfigRaw(profile) as unknown as T;
+    case "save_profile_config_raw":
+      return undefined as unknown as T;
     case "start_profile":
     case "stop_profile":
     case "restart_profile":
@@ -272,6 +277,14 @@ export function kubernetesAction(
 
 export function busyProfiles(): Promise<string[]> {
   return invoke<string[]>("busy_profiles");
+}
+
+export function profileConfigRaw(profile: string): Promise<ProfileConfigRaw> {
+  return invoke<ProfileConfigRaw>("profile_config_raw", { profile });
+}
+
+export function saveProfileConfigRaw(profile: string, content: string): Promise<void> {
+  return invoke<void>("save_profile_config_raw", { profile, content });
 }
 
 export function listContainers(profile: string): Promise<Container[]> {

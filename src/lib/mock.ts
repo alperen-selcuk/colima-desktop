@@ -12,9 +12,14 @@ import type {
   K8sService,
   Profile,
   ProfileConfig,
+  ProfileConfigRaw,
   ProfileStatus,
   Volume,
 } from "./types";
+// The real upstream Colima default template (see src-tauri/resources/colima-default.yaml
+// for attribution), imported as raw text so `npm run dev` in a plain browser shows a
+// fully populated machine configuration editor.
+import upstreamDefaultYaml from "../../src-tauri/resources/colima-default.yaml?raw";
 
 const now = Date.now();
 const isoAgo = (ms: number) => new Date(now - ms).toISOString();
@@ -199,6 +204,15 @@ export const mockK8sServices: K8sService[] = [
 export const mockK8sNodes: K8sNode[] = [
   { name: "colima", status: "Ready", roles: "control-plane,master", version: "v1.30.0", internalIp: "192.168.106.2", osImage: "K3s v1.30.0", cpu: "2", memory: "4Gi", createdAt: isoAgo(10 * 86400_000) },
 ];
+
+export function mockProfileConfigRaw(profile: string): ProfileConfigRaw {
+  return {
+    content: upstreamDefaultYaml,
+    source: "builtin",
+    path: `~/.colima/${profile}/colima.yaml`,
+    exists: profile === "default",
+  };
+}
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
