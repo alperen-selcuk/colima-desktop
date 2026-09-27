@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Laptop screen: rounded rect outline -->
+  <rect x="4" y="4.5" width="24" height="16.5" rx="2.4" stroke="#22b877" stroke-width="1.8" fill="none"/>
+  <!-- Laptop base: thin wide rounded bar -->
+  <path d="M2.4 24.2h27.2c.5 0 .8.55.55 1L28.6 27.4a1.6 1.6 0 0 1-1.4.8H4.8a1.6 1.6 0 0 1-1.4-.8L1.85 25.2c-.25-.45.05-1 .55-1Z" fill="#22b877"/>
+  <!-- Container inside the screen -->
+  <rect x="8.4" y="8.4" width="15.2" height="8.7" rx="1.4" fill="#3ecf8e"/>
+  <rect x="9.9" y="9.5" width="1.35" height="6.5" fill="#15803d"/>
+  <rect x="12.75" y="9.5" width="1.35" height="6.5" fill="#15803d"/>
+  <rect x="15.6" y="9.5" width="1.35" height="6.5" fill="#15803d"/>
+  <rect x="18.45" y="9.5" width="1.35" height="6.5" fill="#15803d"/>
+  <rect x="21.3" y="9.5" width="1.35" height="6.5" fill="#15803d"/>
+</svg>
