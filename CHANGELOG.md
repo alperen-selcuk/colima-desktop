@@ -25,6 +25,7 @@ Initial release.
   the brand in both modes.
 - System tray with per-profile status and quick start/stop.
 - Missing-dependencies setup guide shown automatically when `colima` isn't detected on `PATH`.
+- CI (`ci.yml`) and release (`release.yml`) GitHub Actions workflows, and an MIT `LICENSE`.
 
 ### Notes
 

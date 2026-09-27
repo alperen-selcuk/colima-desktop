@@ -1,5 +1,8 @@
 # Colima Desktop
 
+[![CI](https://github.com/alperen-selcuk/colima-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/alperen-selcuk/colima-desktop/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 A desktop app for [Colima](https://github.com/abiosoft/colima) on macOS & Linux.
 
 > **Independent project notice / Bağımsız proje notu:** Colima Desktop is an independent, open-source
@@ -44,6 +47,19 @@ deployment, service, node) görüntülemenizi sağlar.
   mevcut/aktif context asla okunmaz veya değiştirilmez. Kubeconfig'inizde üretim (örn. AKS) cluster'ları
   olsa bile bunlara yanlışlıkla komut gönderilmez.
 - Node.js ve npm (geliştirme için), Rust toolchain (derleme için)
+
+### İndirme
+
+Hazır paketleri derlemeden kullanmak isterseniz [GitHub Releases](https://github.com/alperen-selcuk/colima-desktop/releases)
+sayfasından işletim sisteminize uygun paketi indirebilirsiniz (macOS için `.app`/`.dmg`, Linux için
+`.deb`/`.AppImage`/`.rpm`).
+
+> **Not:** macOS paketleri şu an imzalı/notarize değildir. Uygulamayı ilk açtığınızda Gatekeeper uyarı
+> verirse, karantina niteliğini terminalden kaldırabilirsiniz:
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/Colima Desktop.app"
+> ```
 
 Linux'ta derleme için ek paketler gerekir (Debian/Ubuntu örneği):
 
@@ -102,6 +118,19 @@ services, nodes).
   (e.g. AKS) are never accidentally targeted.
 - Node.js and npm (for development), Rust toolchain (for building)
 
+### Download
+
+If you'd rather not build from source, grab a prebuilt package for your OS from the
+[GitHub Releases](https://github.com/alperen-selcuk/colima-desktop/releases) page
+(`.app`/`.dmg` on macOS, `.deb`/`.AppImage`/`.rpm` on Linux).
+
+> **Note:** macOS builds are currently unsigned/unnotarized. If Gatekeeper blocks the app on first launch,
+> clear the quarantine attribute from a terminal:
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/Colima Desktop.app"
+> ```
+
 Linux build dependencies (Debian/Ubuntu example):
 
 ```
@@ -121,3 +150,7 @@ Bundles are produced under `src-tauri/target/release/bundle/...`
 (`.app`/`.dmg` on macOS, `.deb`/`.AppImage`/`.rpm` on Linux).
 
 See [CHANGELOG.md](./CHANGELOG.md) for release notes.
+
+## License
+
+MIT — see [LICENSE](./LICENSE).

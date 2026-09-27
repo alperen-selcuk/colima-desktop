@@ -1,0 +1,89 @@
+name: Release
+
+# Builds and publishes a draft GitHub Release with platform bundles whenever a
+# `v*` tag is pushed, or on demand via workflow_dispatch.
+#
+# NOTE: macOS builds produced by this workflow are unsigned/unnotarized (no
+# Apple Developer ID is configured). Users who download the .app/.dmg may see
+# a Gatekeeper warning and need to clear the quarantine attribute themselves:
+#
+#   xattr -dr com.apple.quarantine "/Applications/Colima Desktop.app"
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release (${{ matrix.settings.name }})
+    runs-on: ${{ matrix.settings.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - name: macos-arm64
+            os: macos-latest
+            rustTarget: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macos-x86_64
+            os: macos-latest
+            rustTarget: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            rustTarget: ""
+            args: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Tauri Linux dependencies
+        if: matrix.settings.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            libssl-dev \
+            libxdo-dev \
+            patchelf \
+            file
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.rustTarget }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Colima Desktop ${{ github.ref_name }}"
+          releaseBody: "See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release notes."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.settings.args }}

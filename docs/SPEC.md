@@ -1,6 +1,6 @@
 # Colima Desktop — Specification
 
-A native desktop GUI for [Colima](../../colima) (a Docker Desktop alternative), running on **macOS and Linux**.
+A native desktop GUI for [Colima](https://github.com/abiosoft/colima) (a Docker Desktop alternative), running on **macOS and Linux**.
 Lets the user start/stop Colima machines (profiles), enable Kubernetes, manage containers/images/volumes,
 and browse Kubernetes workloads (pods, deployments, services, nodes).
 
