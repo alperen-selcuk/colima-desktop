@@ -18,7 +18,9 @@ A desktop app for [Colima](https://github.com/abiosoft/colima) on macOS & Linux.
 
 ```sh
 # macOS — Homebrew
-brew tap alperen-selcuk/tap && brew install --cask colima-desktop
+brew tap alperen-selcuk/tap
+brew trust --cask alperen-selcuk/tap/colima-desktop   # older Homebrew versions can skip this step
+brew install colima-desktop
 
 # macOS / Linux — install script
 curl -fsSL https://raw.githubusercontent.com/alperen-selcuk/colima-desktop/main/scripts/install.sh | bash

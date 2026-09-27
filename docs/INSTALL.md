@@ -6,12 +6,19 @@
 
 ```sh
 brew tap alperen-selcuk/tap
-brew install --cask colima-desktop
+brew trust --cask alperen-selcuk/tap/colima-desktop
+brew install colima-desktop
 ```
+
+(Homebrew 7'den itibaren üçüncü parti tap'lerden gelen cask'ler `brew trust` ile onaylanana kadar
+yüklenmeyi reddeder — "Refusing to load cask ... from untrusted tap" hatası alırsanız bu adımı
+çalıştırın. Bu komutu desteklemeyen daha eski Homebrew sürümlerinde bu adımı atlayabilirsiniz.)
 
 Ya da tap'i önceden eklemeden tek satırda:
 
 ```sh
+brew tap alperen-selcuk/tap
+brew trust --cask alperen-selcuk/tap/colima-desktop
 brew install --cask alperen-selcuk/tap/colima-desktop
 ```
 
@@ -88,12 +95,19 @@ curl -fsSL https://raw.githubusercontent.com/alperen-selcuk/colima-desktop/main/
 
 ```sh
 brew tap alperen-selcuk/tap
-brew install --cask colima-desktop
+brew trust --cask alperen-selcuk/tap/colima-desktop
+brew install colima-desktop
 ```
+
+(Starting with Homebrew 7, casks from third-party taps are refused until trusted with `brew trust` —
+if you see "Refusing to load cask ... from untrusted tap", run that step. Older Homebrew versions
+without a `brew trust` command can skip it.)
 
 Or, without tapping first:
 
 ```sh
+brew tap alperen-selcuk/tap
+brew trust --cask alperen-selcuk/tap/colima-desktop
 brew install --cask alperen-selcuk/tap/colima-desktop
 ```
 

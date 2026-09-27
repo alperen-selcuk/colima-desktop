@@ -387,7 +387,8 @@ install_macos_dmg() {
   if command -v brew >/dev/null 2>&1; then
     info "Homebrew detected. You can install/update via Homebrew instead:"
     echo "    brew tap alperen-selcuk/tap"
-    echo "    brew install --cask colima-desktop"
+    echo "    brew trust --cask alperen-selcuk/tap/colima-desktop  # older Homebrew versions can skip this"
+    echo "    brew install colima-desktop"
     info "Continuing with direct .dmg install..."
   fi
 

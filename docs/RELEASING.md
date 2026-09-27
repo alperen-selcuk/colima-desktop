@@ -51,10 +51,12 @@ bulur, sha256'sını hesaplar, `packaging/homebrew/colima-desktop.rb.tmpl`'i dol
 
 ```sh
 brew update
-brew install --cask colima-desktop
+brew trust --cask alperen-selcuk/tap/colima-desktop   # zaten tap'lediyseniz ve ilk kurulumdan sonra genelde gerekmez
+brew install colima-desktop
 ```
 
-çalışır hale gelir.
+çalışır hale gelir. (`brew trust`, yalnızca ilk kez tap'lenen/kurulan bir cask için ya da Homebrew 7'nin
+"untrusted tap" hatasını verdiği durumlarda gereklidir; bkz. `docs/INSTALL.md`.)
 
 Belirli bir tag için manuel tetiklemek isterseniz: Actions → "Update Homebrew Cask" → Run workflow →
 `tag` alanına `v0.1.1` girin.
@@ -78,9 +80,10 @@ Gatekeeper uyarısını `xattr -dr com.apple.quarantine` ile temizler (bkz. [doc
 
 ### 5. Resmi `homebrew/homebrew-cask`'e girme (uzun vadeli, isteğe bağlı)
 
-Şu an kullanıcılar `brew tap alperen-selcuk/tap && brew install --cask colima-desktop` komutuyla kurulum
-yapıyor. Uygulamanın resmi Homebrew cask deposuna (`homebrew/homebrew-cask`) kabul edilip düz
-`brew install colima-desktop`'ın (tap gerekmeden) çalışabilmesi için:
+Şu an kullanıcılar `brew tap alperen-selcuk/tap`, ardından `brew trust --cask alperen-selcuk/tap/colima-desktop`
+(Homebrew 7+ için) ve `brew install colima-desktop` komutlarıyla kurulum yapıyor. Uygulamanın resmi
+Homebrew cask deposuna (`homebrew/homebrew-cask`) kabul edilip düz `brew install colima-desktop`'ın (tap
+ve trust adımı gerekmeden) çalışabilmesi için:
 
 - **İmzalama zorunlu**: Homebrew, cask'lerin Gatekeeper'ı geçmesini (Apple Developer ID ile imzalı ve
   notarize edilmiş olmasını) şart koşar. Yukarıdaki §4'teki secret'lar kalıcı olarak yapılandırılmalı.
@@ -148,10 +151,12 @@ to the `alperen-selcuk/homebrew-tap` repo as `Casks/colima-desktop.rb`. Within a
 
 ```sh
 brew update
-brew install --cask colima-desktop
+brew trust --cask alperen-selcuk/tap/colima-desktop   # usually only needed once, per tap/cask
+brew install colima-desktop
 ```
 
-will work.
+will work. (`brew trust` is needed the first time you tap/install this cask on Homebrew 7+, which
+refuses to load casks from untrusted third-party taps until trusted; see `docs/INSTALL.md`.)
 
 To trigger it manually for a specific tag: Actions → "Update Homebrew Cask" → Run workflow → enter
 `v0.1.1` in the `tag` field.
@@ -175,9 +180,10 @@ with `xattr -dr com.apple.quarantine` (see [docs/INSTALL.md](INSTALL.md)).
 
 ### 5. Getting into the official `homebrew/homebrew-cask` (long-term, optional)
 
-Right now users install via `brew tap alperen-selcuk/tap && brew install --cask colima-desktop`. For the
-app to be accepted into Homebrew's official cask repository (`homebrew/homebrew-cask`), so that plain
-`brew install colima-desktop` works without tapping first:
+Right now users install via `brew tap alperen-selcuk/tap`, then `brew trust --cask
+alperen-selcuk/tap/colima-desktop` (on Homebrew 7+) and `brew install colima-desktop`. For the app to be
+accepted into Homebrew's official cask repository (`homebrew/homebrew-cask`), so that plain
+`brew install colima-desktop` works without tapping or trusting first:
 
 - **Signing is required**: Homebrew requires casks to pass Gatekeeper (i.e. be signed with an Apple
   Developer ID and notarized). The secrets from §4 above need to be permanently configured.
