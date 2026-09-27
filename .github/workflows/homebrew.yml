@@ -146,11 +146,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if git diff --quiet -- Casks/colima-desktop.rb; then
+          # Stage first: `git diff` alone ignores untracked files, so a first-time cask would be skipped.
+          git add Casks/colima-desktop.rb
+          if git diff --cached --quiet -- Casks/colima-desktop.rb; then
             echo "No changes to Casks/colima-desktop.rb, skipping commit."
             exit 0
           fi
 
-          git add Casks/colima-desktop.rb
           git commit -m "colima-desktop ${TAG}"
           git push origin HEAD
