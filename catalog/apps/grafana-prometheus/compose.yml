@@ -1,0 +1,82 @@
+# Adapted from docker/awesome-compose (CC0-1.0) — prometheus-grafana sample
+# https://github.com/docker/awesome-compose/tree/main/prometheus-grafana
+#
+# No bind mounts are used (named volumes only), so a one-shot init container writes the
+# Prometheus scrape config and the Grafana datasource provisioning file into named volumes
+# before the real services start.
+services:
+  prometheus-config:
+    image: docker.io/library/alpine:3.21
+    restart: "no"
+    volumes:
+      - prometheus-config:/config
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /config/prometheus.yml <<'EOF'
+        global:
+          scrape_interval: 15s
+        scrape_configs:
+          - job_name: prometheus
+            static_configs:
+              - targets: ["localhost:9090"]
+        EOF
+
+  grafana-provisioning:
+    image: docker.io/library/alpine:3.21
+    restart: "no"
+    volumes:
+      - grafana-provisioning:/config
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /config/datasources
+        cat > /config/datasources/prometheus.yml <<'EOF'
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            access: proxy
+            url: http://prometheus:9090
+            isDefault: true
+        EOF
+
+  prometheus:
+    image: docker.io/prom/prometheus:v3.15.0
+    depends_on:
+      prometheus-config:
+        condition: service_completed_successfully
+    volumes:
+      - prometheus-config:/etc/prometheus
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT}:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/ready >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  grafana:
+    image: docker.io/grafana/grafana:13.2.2
+    depends_on:
+      grafana-provisioning:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana-provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT}:3000"
+
+volumes:
+  prometheus-config:
+  prometheus-data:
+  grafana-provisioning:
+  grafana-data:

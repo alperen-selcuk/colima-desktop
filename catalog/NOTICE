@@ -1,0 +1,85 @@
+Colima Desktop Marketplace catalog — third-party attributions
+================================================================
+
+The compose.yml files under catalog/apps/ are original work adapted (service topology, healthchecks,
+variable interpolation, host-only port bindings, named-volume config injection) from the permissively
+licensed sources listed below. Container images referenced by tag are pulled at install time from
+their respective upstream registries and are not redistributed by this repository; their own
+licenses (noted per app in apps/<id>/app.json "source.license") govern the images themselves.
+
+docker/awesome-compose
+-----------------------
+https://github.com/docker/awesome-compose
+License: CC0-1.0 (public domain dedication)
+Used as the structural basis for:
+  - catalog/apps/postgres-pgadmin
+  - catalog/apps/mysql-adminer
+  - catalog/apps/mongodb-mongo-express
+  - catalog/apps/redis-redisinsight
+  - catalog/apps/grafana-prometheus
+
+deviantony/docker-elk
+----------------------
+https://github.com/deviantony/docker-elk
+License: MIT
+Copyright (c) the docker-elk contributors.
+Used as the structural basis for:
+  - catalog/apps/elasticsearch
+  - catalog/apps/elasticsearch-kibana
+(specifically the security-enabled single-node setup and the kibana_system password
+bootstrap-via-one-shot-container pattern)
+
+OpenSearch Project documentation-website
+------------------------------------------
+https://github.com/opensearch-project/documentation-website
+License: Apache-2.0
+Used as the structural basis for:
+  - catalog/apps/opensearch-dashboards
+(the official Docker Compose quickstart's service layout and environment variables)
+
+Grafana Loki
+-------------
+https://github.com/grafana/loki (production/ documentation)
+License: Apache-2.0 (documentation); the Loki server image itself is licensed AGPL-3.0 by Grafana
+Labs — see apps/loki-grafana/app.json.
+Used as the structural basis for:
+  - catalog/apps/loki-grafana
+
+kafbat/kafka-ui
+----------------
+https://github.com/kafbat/kafka-ui
+License: Apache-2.0
+Used as the structural basis for the Kafka UI half of:
+  - catalog/apps/kafka-kafka-ui
+kafbat/kafka-ui is the actively maintained continuation of the originally provectus/kafka-ui
+project; the provectus Docker Hub images are stale, so kafbat's published images are used instead.
+
+Apache Kafka
+-------------
+https://kafka.apache.org
+License: Apache-2.0
+The apache/kafka image and its documented KRaft single-node quickstart were used as the structural
+basis for the Kafka half of catalog/apps/kafka-kafka-ui (dual PLAINTEXT/EXTERNAL listener
+configuration for host-reachable access).
+
+Official upstream vendor documentation
+-----------------------------------------
+The following apps are adapted directly from each project's own official Docker/Docker Compose
+documentation (not a third-party compose collection); no separate compose file was copied
+verbatim, only the documented environment variables, ports and healthcheck commands:
+  - catalog/apps/rabbitmq            https://github.com/docker-library/docs/tree/master/rabbitmq (MIT)
+  - catalog/apps/jaeger              https://www.jaegertracing.io/docs/latest/getting-started/ (Apache-2.0)
+  - catalog/apps/keycloak-postgres   https://www.keycloak.org/server/containers (Apache-2.0)
+  - catalog/apps/vault-dev           https://hub.docker.com/r/hashicorp/vault (Vault itself is BSL 1.1)
+  - catalog/apps/mailpit             https://github.com/axllent/mailpit (MIT)
+  - catalog/apps/n8n                 https://docs.n8n.io/hosting/installation/docker/ (n8n itself is
+                                      the Sustainable Use License)
+  - catalog/apps/ollama-open-webui   https://github.com/open-webui/open-webui (MIT)
+
+Kubernetes community icons
+-----------------------------
+public/k8s-icons/ (used elsewhere in this app, not in the catalog) are attributed separately in
+public/k8s-icons/NOTICE — see that file, not this one, for the Kubernetes icon set.
+
+No content in this catalog was copied from portainer/templates (no explicit license) or from
+runtipi (GPL) — see catalog/README.md "Provenance" for the exclusion rationale.

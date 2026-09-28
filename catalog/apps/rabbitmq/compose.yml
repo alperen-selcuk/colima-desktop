@@ -1,0 +1,21 @@
+# Adapted from the official RabbitMQ Docker image documentation (MIT)
+# https://github.com/docker-library/docs/tree/master/rabbitmq
+services:
+  rabbitmq:
+    image: docker.io/library/rabbitmq:4.1.4-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT}:5672"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  rabbitmq-data:

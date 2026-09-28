@@ -1,14 +1,15 @@
 {
   "name": "colima-desktop",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "catalog:build": "node scripts/build-catalog.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",

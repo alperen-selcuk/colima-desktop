@@ -1,0 +1,39 @@
+{
+  "id": "mysql-adminer",
+  "name": "MySQL + Adminer",
+  "description": "MySQL database with Adminer, a lightweight single-file database admin UI, in your browser.",
+  "category": "database",
+  "tags": ["mysql", "sql", "adminer"],
+  "icon": "mysql",
+  "website": "https://www.mysql.com",
+  "source": {
+    "name": "docker/awesome-compose (mysql-adminer / nginx-nodejs-mysql-adminer patterns, official images)",
+    "url": "https://github.com/docker/awesome-compose",
+    "license": "CC0-1.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "MYSQL_USER", "type": "string", "label": "MySQL user", "default": "app" },
+    { "name": "MYSQL_PASSWORD", "type": "password", "label": "MySQL user password", "length": 20 },
+    { "name": "MYSQL_ROOT_PASSWORD", "type": "password", "label": "MySQL root password", "length": 20, "hidden": true },
+    { "name": "MYSQL_DATABASE", "type": "string", "label": "Database name", "default": "app" },
+    { "name": "MYSQL_PORT", "type": "port", "label": "MySQL port", "default": 3306 },
+    { "name": "ADMINER_PORT", "type": "port", "label": "Adminer port", "default": 8081 }
+  ],
+  "endpoints": [
+    {
+      "name": "Adminer",
+      "url": "http://localhost:${ADMINER_PORT}",
+      "username": "${MYSQL_USER}",
+      "password": "${MYSQL_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Connection string",
+      "value": "mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@localhost:${MYSQL_PORT}/${MYSQL_DATABASE}"
+    }
+  ],
+  "ready": { "type": "healthy", "timeoutSec": 120 },
+  "notes": "In Adminer, set System to MySQL and Server to `mysql` (the in-network hostname) to connect."
+}

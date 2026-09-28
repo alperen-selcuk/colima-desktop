@@ -1,0 +1,26 @@
+# Adapted from the official n8n Docker documentation
+# https://docs.n8n.io/hosting/installation/docker/
+services:
+  n8n:
+    image: docker.io/n8nio/n8n:1.115.2
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_HOST=localhost
+      - N8N_EDITOR_BASE_URL=http://localhost:${N8N_PORT}
+      - WEBHOOK_URL=http://localhost:${N8N_PORT}/
+    ports:
+      - "127.0.0.1:${N8N_PORT}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  n8n-data:

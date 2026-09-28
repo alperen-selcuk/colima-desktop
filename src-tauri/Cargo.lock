@@ -503,10 +503,11 @@ dependencies = [
 
 [[package]]
 name = "colima_desktop"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
+ "getrandom 0.2.17",
  "once_cell",
  "portable-pty",
  "reqwest 0.12.28",

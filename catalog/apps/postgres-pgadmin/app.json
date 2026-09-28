@@ -1,0 +1,40 @@
+{
+  "id": "postgres-pgadmin",
+  "name": "PostgreSQL + pgAdmin",
+  "description": "PostgreSQL database with pgAdmin 4 for browsing, querying and administering it from a browser.",
+  "category": "database",
+  "tags": ["postgres", "postgresql", "sql", "pgadmin"],
+  "icon": "postgresql",
+  "website": "https://www.postgresql.org",
+  "source": {
+    "name": "docker/awesome-compose (postgresql-pgadmin)",
+    "url": "https://github.com/docker/awesome-compose/tree/main/postgresql-pgadmin",
+    "license": "CC0-1.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "PG_USER", "type": "string", "label": "Postgres user", "default": "app" },
+    { "name": "PG_PASSWORD", "type": "password", "label": "Postgres password", "length": 20 },
+    { "name": "PG_DB", "type": "string", "label": "Database name", "default": "app" },
+    { "name": "PG_PORT", "type": "port", "label": "PostgreSQL port", "default": 5432 },
+    { "name": "PGADMIN_PORT", "type": "port", "label": "pgAdmin port", "default": 8080 },
+    { "name": "PGADMIN_EMAIL", "type": "string", "label": "pgAdmin login email", "default": "admin@example.com" },
+    { "name": "PGADMIN_PASSWORD", "type": "password", "label": "pgAdmin password", "length": 20 }
+  ],
+  "endpoints": [
+    {
+      "name": "pgAdmin",
+      "url": "http://localhost:${PGADMIN_PORT}",
+      "username": "${PGADMIN_EMAIL}",
+      "password": "${PGADMIN_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Connection string",
+      "value": "postgres://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DB}"
+    }
+  ],
+  "ready": { "type": "healthy", "timeoutSec": 90 },
+  "notes": "In pgAdmin, add a server with host `postgres`, port 5432 (the in-network port, not PG_PORT) to connect without leaving the browser."
+}

@@ -1,0 +1,39 @@
+{
+  "id": "vault-dev",
+  "name": "Vault (dev mode)",
+  "description": "HashiCorp Vault in dev server mode: in-memory, auto-unsealed, for local secrets-management experiments.",
+  "category": "auth",
+  "tags": ["vault", "secrets", "hashicorp"],
+  "icon": "vault",
+  "website": "https://www.vaultproject.io",
+  "source": {
+    "name": "HashiCorp Vault official Docker image documentation",
+    "url": "https://hub.docker.com/r/hashicorp/vault",
+    "license": "Business Source License 1.1 (Vault server); documentation used under fair use"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 256,
+  "variables": [
+    { "name": "VAULT_TOKEN", "type": "password", "label": "Vault root token", "length": 24 },
+    { "name": "VAULT_PORT", "type": "port", "label": "Vault port", "default": 8200 }
+  ],
+  "endpoints": [
+    {
+      "name": "Vault UI",
+      "url": "http://localhost:${VAULT_PORT}/ui",
+      "password": "${VAULT_TOKEN}",
+      "primary": true
+    },
+    {
+      "name": "VAULT_ADDR / VAULT_TOKEN",
+      "value": "VAULT_ADDR=http://localhost:${VAULT_PORT} VAULT_TOKEN=${VAULT_TOKEN}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${VAULT_PORT}/v1/sys/health",
+    "expectStatus": [200],
+    "timeoutSec": 60
+  },
+  "notes": "Dev mode: unsealed automatically, all data is in memory and lost on restart, TLS is disabled. Never use dev mode for anything beyond local experimentation. Sign in to the UI with the root token as the password (method: Token)."
+}

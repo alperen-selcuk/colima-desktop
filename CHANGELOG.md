@@ -2,6 +2,36 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.1.5] - 2026-09-28
+
+### Added
+
+- **Marketplace**: new sidebar page to browse and one-click install curated apps and stacks. The install
+  dialog generates passwords, picks free ports, runs preflight checks (architecture, VM memory,
+  `vm.max_map_count` with a one-click fix) and, once the stack is ready, shows every local URL, username,
+  password and connection string. An **Installed** tab lists your apps with status, credentials,
+  Stop/Start/Restart and Uninstall (optionally deleting data volumes). The catalog ships inside the app and
+  refreshes from GitHub, so new apps don't need a release.
+- **Marketplace catalog** (`catalog/`, `docs/SPEC.md` §6.8): the source-of-truth data for the
+  upcoming one-click Marketplace. 17 curated apps under `catalog/apps/<id>/{app.json,compose.yml}`
+  across search (Elasticsearch, Elasticsearch+Kibana, OpenSearch+Dashboards), database
+  (Postgres+pgAdmin, MySQL+Adminer, MongoDB+Mongo Express, Redis+RedisInsight), messaging
+  (Kafka+Kafka UI, RabbitMQ), monitoring (Grafana+Prometheus, Loki+Grafana, Jaeger), auth
+  (Keycloak+PostgreSQL, Vault dev mode), devtools (Mailpit, n8n) and ai (Ollama+Open WebUI).
+  `npm run catalog:build` (`scripts/build-catalog.mjs`) validates every app against the authoring
+  rules (pinned multi-arch images, no Bitnami, `127.0.0.1`-bound ports via port variables, named
+  volumes only, no `container_name`, alphanumeric passwords, every `${VAR}` declared) and writes
+  the deterministic `catalog/dist/catalog.json`; `--check` fails CI if it's stale.
+  `scripts/validate-catalog.mjs` renders every app's `compose.yml` with dummy values and runs
+  `docker compose config -q` (no daemon required); `scripts/smoke-catalog.mjs` does a real
+  `docker compose up -d --wait` + endpoint check + `down -v` for light apps. New CI job `catalog`
+  runs both plus `catalog:build --check`. See `catalog/README.md` for the authoring guide and
+  `catalog/NOTICE` for third-party attributions.
+- **Known gap:** `storage`/MinIO is intentionally not in the catalog — as of this writing
+  `minio/minio` has been removed from Docker Hub (no publicly pullable image; confirmed via
+  `docker buildx imagetools inspect` and the Docker Hub/registry APIs), so no image could be
+  verified for it. See `catalog/README.md` "Known gaps".
+
 ## [0.1.4] - 2026-09-28
 
 ### Fixed

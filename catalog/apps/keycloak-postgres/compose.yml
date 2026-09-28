@@ -1,0 +1,48 @@
+# Adapted from the official Keycloak documentation's Docker Compose example (Apache-2.0)
+# https://www.keycloak.org/server/containers
+services:
+  postgres:
+    image: docker.io/library/postgres:17.6-alpine
+    environment:
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=keycloak
+    volumes:
+      - keycloak-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_PASSWORD=${PG_PASSWORD}
+      - KC_HEALTH_ENABLED=true
+      - KC_HOSTNAME_STRICT=false
+    command: ["start-dev"]
+    ports:
+      - "127.0.0.1:${KEYCLOAK_PORT}:8080"
+    healthcheck:
+      # The Keycloak image has no curl/wget; /bin/sh is bash, so use its /dev/tcp support to probe
+      # the management interface's health endpoint (port 9000) directly.
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"status\": \"UP\"' <&3"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  keycloak-pg-data:

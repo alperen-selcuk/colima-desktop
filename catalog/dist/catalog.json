@@ -1,0 +1,1162 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-28",
+  "items": [
+    {
+      "id": "ollama-open-webui",
+      "name": "Ollama + Open WebUI",
+      "description": "Ollama local LLM runtime with Open WebUI, a ChatGPT-style browser interface for chatting with local models.",
+      "category": "ai",
+      "tags": [
+        "ollama",
+        "llm",
+        "open-webui",
+        "ai"
+      ],
+      "icon": "ollama",
+      "website": "https://ollama.com",
+      "source": {
+        "name": "Open WebUI official documentation (Docker Compose with Ollama)",
+        "url": "https://github.com/open-webui/open-webui",
+        "license": "MIT (Open WebUI); Ollama is MIT-licensed"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 4096,
+      "variables": [
+        {
+          "name": "OLLAMA_PORT",
+          "type": "port",
+          "label": "Ollama API port",
+          "default": 11434
+        },
+        {
+          "name": "OPEN_WEBUI_PORT",
+          "type": "port",
+          "label": "Open WebUI port",
+          "default": 3080
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Open WebUI",
+          "url": "http://localhost:${OPEN_WEBUI_PORT}",
+          "primary": true
+        },
+        {
+          "name": "Ollama API",
+          "url": "http://localhost:${OLLAMA_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${OPEN_WEBUI_PORT}/health",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 240
+      },
+      "notes": "No models are pulled automatically (they can be multiple GB). Open WebUI's first visitor becomes the local admin account — create it on first load. Pull a model from inside the container with `docker exec <ollama container> ollama pull llama3.2`, or from the Open WebUI Settings > Models screen.",
+      "compose": "# Adapted from Open WebUI's official Docker Compose example (MIT)\n# https://github.com/open-webui/open-webui\nservices:\n  ollama:\n    image: docker.io/ollama/ollama:0.12.5\n    ports:\n      - \"127.0.0.1:${OLLAMA_PORT}:11434\"\n    volumes:\n      - ollama-data:/root/.ollama\n    healthcheck:\n      # The ollama image has no curl/wget; `ollama list` talks to the local API over its own\n      # client, so it doubles as a readiness probe.\n      test: [\"CMD\", \"ollama\", \"list\"]\n      interval: 10s\n      timeout: 5s\n      retries: 20\n\n  open-webui:\n    image: ghcr.io/open-webui/open-webui:v0.11.4\n    depends_on:\n      ollama:\n        condition: service_healthy\n    environment:\n      - OLLAMA_BASE_URL=http://ollama:11434\n      - WEBUI_AUTH=true\n    ports:\n      - \"127.0.0.1:${OPEN_WEBUI_PORT}:8080\"\n    volumes:\n      - open-webui-data:/app/backend/data\n\nvolumes:\n  ollama-data:\n  open-webui-data:\n"
+    },
+    {
+      "id": "keycloak-postgres",
+      "name": "Keycloak + PostgreSQL",
+      "description": "Keycloak identity and access management backed by PostgreSQL, for local OIDC/SAML development.",
+      "category": "auth",
+      "tags": [
+        "keycloak",
+        "oidc",
+        "sso",
+        "postgres"
+      ],
+      "icon": "keycloak",
+      "website": "https://www.keycloak.org",
+      "source": {
+        "name": "Keycloak official documentation (Docker Compose example)",
+        "url": "https://www.keycloak.org/server/containers",
+        "license": "Apache-2.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 1024,
+      "variables": [
+        {
+          "name": "KEYCLOAK_ADMIN",
+          "type": "string",
+          "label": "Keycloak admin user",
+          "default": "admin"
+        },
+        {
+          "name": "KEYCLOAK_ADMIN_PASSWORD",
+          "type": "password",
+          "label": "Keycloak admin password",
+          "length": 20
+        },
+        {
+          "name": "KEYCLOAK_PORT",
+          "type": "port",
+          "label": "Keycloak port",
+          "default": 8090
+        },
+        {
+          "name": "PG_PASSWORD",
+          "type": "password",
+          "label": "PostgreSQL password",
+          "length": 20,
+          "hidden": true
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Keycloak Admin Console",
+          "url": "http://localhost:${KEYCLOAK_PORT}",
+          "username": "${KEYCLOAK_ADMIN}",
+          "password": "${KEYCLOAK_ADMIN_PASSWORD}",
+          "primary": true
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 180
+      },
+      "notes": "Runs in `start-dev` mode (HTTP allowed, no TLS) — for local development only. Data is persisted in the PostgreSQL volume.",
+      "compose": "# Adapted from the official Keycloak documentation's Docker Compose example (Apache-2.0)\n# https://www.keycloak.org/server/containers\nservices:\n  postgres:\n    image: docker.io/library/postgres:17.6-alpine\n    environment:\n      - POSTGRES_USER=keycloak\n      - POSTGRES_PASSWORD=${PG_PASSWORD}\n      - POSTGRES_DB=keycloak\n    volumes:\n      - keycloak-pg-data:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U keycloak -d keycloak\"]\n      interval: 5s\n      timeout: 5s\n      retries: 20\n\n  keycloak:\n    image: quay.io/keycloak/keycloak:26.7.4\n    depends_on:\n      postgres:\n        condition: service_healthy\n    environment:\n      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}\n      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}\n      - KC_DB=postgres\n      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak\n      - KC_DB_USERNAME=keycloak\n      - KC_DB_PASSWORD=${PG_PASSWORD}\n      - KC_HEALTH_ENABLED=true\n      - KC_HOSTNAME_STRICT=false\n    command: [\"start-dev\"]\n    ports:\n      - \"127.0.0.1:${KEYCLOAK_PORT}:8080\"\n    healthcheck:\n      # The Keycloak image has no curl/wget; /bin/sh is bash, so use its /dev/tcp support to probe\n      # the management interface's health endpoint (port 9000) directly.\n      test:\n        [\n          \"CMD-SHELL\",\n          \"exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\\\r\\\\nHost: localhost\\\\r\\\\nConnection: close\\\\r\\\\n\\\\r\\\\n' >&3 && grep -q '\\\"status\\\": \\\"UP\\\"' <&3\"\n        ]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\nvolumes:\n  keycloak-pg-data:\n"
+    },
+    {
+      "id": "vault-dev",
+      "name": "Vault (dev mode)",
+      "description": "HashiCorp Vault in dev server mode: in-memory, auto-unsealed, for local secrets-management experiments.",
+      "category": "auth",
+      "tags": [
+        "vault",
+        "secrets",
+        "hashicorp"
+      ],
+      "icon": "vault",
+      "website": "https://www.vaultproject.io",
+      "source": {
+        "name": "HashiCorp Vault official Docker image documentation",
+        "url": "https://hub.docker.com/r/hashicorp/vault",
+        "license": "Business Source License 1.1 (Vault server); documentation used under fair use"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 256,
+      "variables": [
+        {
+          "name": "VAULT_TOKEN",
+          "type": "password",
+          "label": "Vault root token",
+          "length": 24
+        },
+        {
+          "name": "VAULT_PORT",
+          "type": "port",
+          "label": "Vault port",
+          "default": 8200
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Vault UI",
+          "url": "http://localhost:${VAULT_PORT}/ui",
+          "password": "${VAULT_TOKEN}",
+          "primary": true
+        },
+        {
+          "name": "VAULT_ADDR / VAULT_TOKEN",
+          "value": "VAULT_ADDR=http://localhost:${VAULT_PORT} VAULT_TOKEN=${VAULT_TOKEN}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${VAULT_PORT}/v1/sys/health",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 60
+      },
+      "notes": "Dev mode: unsealed automatically, all data is in memory and lost on restart, TLS is disabled. Never use dev mode for anything beyond local experimentation. Sign in to the UI with the root token as the password (method: Token).",
+      "compose": "# Adapted from the official HashiCorp Vault Docker image documentation\n# https://hub.docker.com/r/hashicorp/vault\nservices:\n  vault:\n    image: docker.io/hashicorp/vault:1.21.1\n    cap_add:\n      - IPC_LOCK\n    environment:\n      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN}\n      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200\n      - VAULT_ADDR=http://127.0.0.1:8200\n    ports:\n      - \"127.0.0.1:${VAULT_PORT}:8200\"\n    healthcheck:\n      test: [\"CMD\", \"vault\", \"status\"]\n      interval: 5s\n      timeout: 5s\n      retries: 20\n"
+    },
+    {
+      "id": "mongodb-mongo-express",
+      "name": "MongoDB + Mongo Express",
+      "description": "MongoDB database with Mongo Express, a web-based admin UI for browsing collections and documents.",
+      "category": "database",
+      "tags": [
+        "mongodb",
+        "nosql",
+        "mongo-express"
+      ],
+      "icon": "mongodb",
+      "website": "https://www.mongodb.com",
+      "source": {
+        "name": "docker/awesome-compose (official mongo + mongo-express images)",
+        "url": "https://github.com/docker/awesome-compose",
+        "license": "CC0-1.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "MONGO_USER",
+          "type": "string",
+          "label": "MongoDB root user",
+          "default": "app"
+        },
+        {
+          "name": "MONGO_PASSWORD",
+          "type": "password",
+          "label": "MongoDB root password",
+          "length": 20
+        },
+        {
+          "name": "MONGO_PORT",
+          "type": "port",
+          "label": "MongoDB port",
+          "default": 27017
+        },
+        {
+          "name": "MONGO_EXPRESS_PORT",
+          "type": "port",
+          "label": "Mongo Express port",
+          "default": 8082
+        },
+        {
+          "name": "MONGO_EXPRESS_USER",
+          "type": "string",
+          "label": "Mongo Express login user",
+          "default": "admin"
+        },
+        {
+          "name": "MONGO_EXPRESS_PASSWORD",
+          "type": "password",
+          "label": "Mongo Express login password",
+          "length": 20
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Mongo Express",
+          "url": "http://localhost:${MONGO_EXPRESS_PORT}",
+          "username": "${MONGO_EXPRESS_USER}",
+          "password": "${MONGO_EXPRESS_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Connection string",
+          "value": "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@localhost:${MONGO_PORT}/"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 90
+      },
+      "notes": "Mongo Express is protected by HTTP basic auth using MONGO_EXPRESS_USER/PASSWORD, separate from the MongoDB credentials.",
+      "compose": "# Adapted from docker/awesome-compose (CC0-1.0) patterns using the official mongo + mongo-express images.\n# https://github.com/docker/awesome-compose\nservices:\n  mongo:\n    image: docker.io/library/mongo:8.2.1\n    environment:\n      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USER}\n      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}\n    ports:\n      - \"127.0.0.1:${MONGO_PORT}:27017\"\n    volumes:\n      - mongo-data:/data/db\n    healthcheck:\n      test: [\"CMD\", \"mongosh\", \"--quiet\", \"--eval\", \"db.adminCommand('ping')\"]\n      interval: 5s\n      timeout: 5s\n      retries: 30\n\n  mongo-express:\n    image: docker.io/library/mongo-express:1.0.2-20-alpine3.19\n    depends_on:\n      mongo:\n        condition: service_healthy\n    environment:\n      - ME_CONFIG_MONGODB_ADMINUSERNAME=${MONGO_USER}\n      - ME_CONFIG_MONGODB_ADMINPASSWORD=${MONGO_PASSWORD}\n      - ME_CONFIG_MONGODB_SERVER=mongo\n      - ME_CONFIG_BASICAUTH_USERNAME=${MONGO_EXPRESS_USER}\n      - ME_CONFIG_BASICAUTH_PASSWORD=${MONGO_EXPRESS_PASSWORD}\n    ports:\n      - \"127.0.0.1:${MONGO_EXPRESS_PORT}:8081\"\n\nvolumes:\n  mongo-data:\n"
+    },
+    {
+      "id": "mysql-adminer",
+      "name": "MySQL + Adminer",
+      "description": "MySQL database with Adminer, a lightweight single-file database admin UI, in your browser.",
+      "category": "database",
+      "tags": [
+        "mysql",
+        "sql",
+        "adminer"
+      ],
+      "icon": "mysql",
+      "website": "https://www.mysql.com",
+      "source": {
+        "name": "docker/awesome-compose (mysql-adminer / nginx-nodejs-mysql-adminer patterns, official images)",
+        "url": "https://github.com/docker/awesome-compose",
+        "license": "CC0-1.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "MYSQL_USER",
+          "type": "string",
+          "label": "MySQL user",
+          "default": "app"
+        },
+        {
+          "name": "MYSQL_PASSWORD",
+          "type": "password",
+          "label": "MySQL user password",
+          "length": 20
+        },
+        {
+          "name": "MYSQL_ROOT_PASSWORD",
+          "type": "password",
+          "label": "MySQL root password",
+          "length": 20,
+          "hidden": true
+        },
+        {
+          "name": "MYSQL_DATABASE",
+          "type": "string",
+          "label": "Database name",
+          "default": "app"
+        },
+        {
+          "name": "MYSQL_PORT",
+          "type": "port",
+          "label": "MySQL port",
+          "default": 3306
+        },
+        {
+          "name": "ADMINER_PORT",
+          "type": "port",
+          "label": "Adminer port",
+          "default": 8081
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Adminer",
+          "url": "http://localhost:${ADMINER_PORT}",
+          "username": "${MYSQL_USER}",
+          "password": "${MYSQL_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Connection string",
+          "value": "mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@localhost:${MYSQL_PORT}/${MYSQL_DATABASE}"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 120
+      },
+      "notes": "In Adminer, set System to MySQL and Server to `mysql` (the in-network hostname) to connect.",
+      "compose": "# Adapted from docker/awesome-compose (CC0-1.0) patterns using the official mysql and adminer images.\n# https://github.com/docker/awesome-compose\nservices:\n  mysql:\n    image: docker.io/library/mysql:9.4\n    environment:\n      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}\n      - MYSQL_USER=${MYSQL_USER}\n      - MYSQL_PASSWORD=${MYSQL_PASSWORD}\n      - MYSQL_DATABASE=${MYSQL_DATABASE}\n    ports:\n      - \"127.0.0.1:${MYSQL_PORT}:3306\"\n    volumes:\n      - mysql-data:/var/lib/mysql\n    healthcheck:\n      test: [\"CMD\", \"mysqladmin\", \"ping\", \"-h\", \"localhost\", \"-u\", \"root\", \"-p${MYSQL_ROOT_PASSWORD}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 30\n\n  adminer:\n    image: docker.io/library/adminer:5.4.1\n    depends_on:\n      mysql:\n        condition: service_healthy\n    environment:\n      - ADMINER_DEFAULT_SERVER=mysql\n    ports:\n      - \"127.0.0.1:${ADMINER_PORT}:8080\"\n\nvolumes:\n  mysql-data:\n"
+    },
+    {
+      "id": "postgres-pgadmin",
+      "name": "PostgreSQL + pgAdmin",
+      "description": "PostgreSQL database with pgAdmin 4 for browsing, querying and administering it from a browser.",
+      "category": "database",
+      "tags": [
+        "postgres",
+        "postgresql",
+        "sql",
+        "pgadmin"
+      ],
+      "icon": "postgresql",
+      "website": "https://www.postgresql.org",
+      "source": {
+        "name": "docker/awesome-compose (postgresql-pgadmin)",
+        "url": "https://github.com/docker/awesome-compose/tree/main/postgresql-pgadmin",
+        "license": "CC0-1.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "PG_USER",
+          "type": "string",
+          "label": "Postgres user",
+          "default": "app"
+        },
+        {
+          "name": "PG_PASSWORD",
+          "type": "password",
+          "label": "Postgres password",
+          "length": 20
+        },
+        {
+          "name": "PG_DB",
+          "type": "string",
+          "label": "Database name",
+          "default": "app"
+        },
+        {
+          "name": "PG_PORT",
+          "type": "port",
+          "label": "PostgreSQL port",
+          "default": 5432
+        },
+        {
+          "name": "PGADMIN_PORT",
+          "type": "port",
+          "label": "pgAdmin port",
+          "default": 8080
+        },
+        {
+          "name": "PGADMIN_EMAIL",
+          "type": "string",
+          "label": "pgAdmin login email",
+          "default": "admin@example.com"
+        },
+        {
+          "name": "PGADMIN_PASSWORD",
+          "type": "password",
+          "label": "pgAdmin password",
+          "length": 20
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "pgAdmin",
+          "url": "http://localhost:${PGADMIN_PORT}",
+          "username": "${PGADMIN_EMAIL}",
+          "password": "${PGADMIN_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Connection string",
+          "value": "postgres://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DB}"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 90
+      },
+      "notes": "In pgAdmin, add a server with host `postgres`, port 5432 (the in-network port, not PG_PORT) to connect without leaving the browser.",
+      "compose": "# Adapted from docker/awesome-compose (CC0-1.0) — postgresql-pgadmin sample\n# https://github.com/docker/awesome-compose/tree/main/postgresql-pgadmin\nservices:\n  postgres:\n    image: docker.io/library/postgres:17.6-alpine\n    environment:\n      - POSTGRES_USER=${PG_USER}\n      - POSTGRES_PASSWORD=${PG_PASSWORD}\n      - POSTGRES_DB=${PG_DB}\n    ports:\n      - \"127.0.0.1:${PG_PORT}:5432\"\n    volumes:\n      - pg-data:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U ${PG_USER} -d ${PG_DB}\"]\n      interval: 5s\n      timeout: 5s\n      retries: 20\n\n  pgadmin:\n    image: docker.io/dpage/pgadmin4:9.7\n    depends_on:\n      postgres:\n        condition: service_healthy\n    environment:\n      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL}\n      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD}\n      - PGADMIN_CONFIG_SERVER_MODE=False\n    ports:\n      - \"127.0.0.1:${PGADMIN_PORT}:80\"\n    volumes:\n      - pgadmin-data:/var/lib/pgadmin\n\nvolumes:\n  pg-data:\n  pgadmin-data:\n"
+    },
+    {
+      "id": "redis-redisinsight",
+      "name": "Redis + RedisInsight",
+      "description": "Redis in-memory data store with RedisInsight for browsing keys, running commands and monitoring.",
+      "category": "database",
+      "tags": [
+        "redis",
+        "cache",
+        "redisinsight"
+      ],
+      "icon": "redis",
+      "website": "https://redis.io",
+      "source": {
+        "name": "docker/awesome-compose (official redis + redisinsight images)",
+        "url": "https://github.com/docker/awesome-compose",
+        "license": "CC0-1.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 256,
+      "variables": [
+        {
+          "name": "REDIS_PASSWORD",
+          "type": "password",
+          "label": "Redis password",
+          "length": 20
+        },
+        {
+          "name": "REDIS_PORT",
+          "type": "port",
+          "label": "Redis port",
+          "default": 6379
+        },
+        {
+          "name": "REDISINSIGHT_PORT",
+          "type": "port",
+          "label": "RedisInsight port",
+          "default": 5540
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "RedisInsight",
+          "url": "http://localhost:${REDISINSIGHT_PORT}",
+          "primary": true
+        },
+        {
+          "name": "Connection string",
+          "value": "redis://:${REDIS_PASSWORD}@localhost:${REDIS_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 60
+      },
+      "notes": "RedisInsight has no login by default; add a database with host `redis`, port 6379 and the generated password to connect.",
+      "compose": "# Adapted from docker/awesome-compose (CC0-1.0) patterns using the official redis + redisinsight images.\n# https://github.com/docker/awesome-compose\nservices:\n  redis:\n    image: docker.io/library/redis:8.2.2-alpine\n    command: [\"redis-server\", \"--requirepass\", \"${REDIS_PASSWORD}\"]\n    ports:\n      - \"127.0.0.1:${REDIS_PORT}:6379\"\n    volumes:\n      - redis-data:/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"redis-cli -a ${REDIS_PASSWORD} ping | grep -q PONG\"]\n      interval: 5s\n      timeout: 5s\n      retries: 20\n\n  redisinsight:\n    image: docker.io/redis/redisinsight:2.62\n    depends_on:\n      redis:\n        condition: service_healthy\n    ports:\n      - \"127.0.0.1:${REDISINSIGHT_PORT}:5540\"\n    volumes:\n      - redisinsight-data:/data\n\nvolumes:\n  redis-data:\n  redisinsight-data:\n"
+    },
+    {
+      "id": "mailpit",
+      "name": "Mailpit",
+      "description": "SMTP test server that catches outgoing mail and shows it in a web UI — no real emails are sent.",
+      "category": "devtools",
+      "tags": [
+        "smtp",
+        "email",
+        "testing"
+      ],
+      "icon": "mailpit",
+      "website": "https://mailpit.axllent.org",
+      "source": {
+        "name": "Mailpit official documentation (Docker install)",
+        "url": "https://github.com/axllent/mailpit",
+        "license": "MIT"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 256,
+      "variables": [
+        {
+          "name": "MAILPIT_SMTP_PORT",
+          "type": "port",
+          "label": "SMTP port",
+          "default": 1025
+        },
+        {
+          "name": "MAILPIT_UI_PORT",
+          "type": "port",
+          "label": "Web UI port",
+          "default": 8025
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Mailpit UI",
+          "url": "http://localhost:${MAILPIT_UI_PORT}",
+          "primary": true
+        },
+        {
+          "name": "SMTP server",
+          "value": "smtp://localhost:${MAILPIT_SMTP_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 30
+      },
+      "notes": "Point any app's SMTP settings at localhost:${MAILPIT_SMTP_PORT} with no auth and no TLS; every message shows up in the web UI.",
+      "compose": "# Adapted from the official Mailpit documentation (MIT)\n# https://github.com/axllent/mailpit\nservices:\n  mailpit:\n    image: docker.io/axllent/mailpit:v1.31.3\n    ports:\n      - \"127.0.0.1:${MAILPIT_SMTP_PORT}:1025\"\n      - \"127.0.0.1:${MAILPIT_UI_PORT}:8025\"\n    volumes:\n      - mailpit-data:/data\n    environment:\n      - MP_MAX_MESSAGES=5000\n      - MP_DATABASE=/data/mailpit.db\n    healthcheck:\n      test: [\"CMD\", \"wget\", \"-qO-\", \"http://localhost:8025/readyz\"]\n      interval: 5s\n      timeout: 5s\n      retries: 20\n\nvolumes:\n  mailpit-data:\n"
+    },
+    {
+      "id": "n8n",
+      "name": "n8n",
+      "description": "n8n workflow automation platform for building integrations and automations with a visual editor.",
+      "category": "devtools",
+      "tags": [
+        "n8n",
+        "automation",
+        "workflow"
+      ],
+      "icon": "n8n",
+      "website": "https://n8n.io",
+      "source": {
+        "name": "n8n official Docker documentation",
+        "url": "https://docs.n8n.io/hosting/installation/docker/",
+        "license": "Sustainable Use License (n8n server); documentation used under fair use"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 1024,
+      "variables": [
+        {
+          "name": "N8N_USER",
+          "type": "string",
+          "label": "n8n login email",
+          "default": "admin@example.com"
+        },
+        {
+          "name": "N8N_PASSWORD",
+          "type": "password",
+          "label": "n8n login password",
+          "length": 20
+        },
+        {
+          "name": "N8N_PORT",
+          "type": "port",
+          "label": "n8n port",
+          "default": 5678
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "n8n",
+          "url": "http://localhost:${N8N_PORT}",
+          "username": "${N8N_USER}",
+          "password": "${N8N_PASSWORD}",
+          "primary": true
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${N8N_PORT}/healthz",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 90
+      },
+      "notes": "Uses n8n's built-in basic auth for a single local user. Workflow data is stored in SQLite in a named volume.",
+      "compose": "# Adapted from the official n8n Docker documentation\n# https://docs.n8n.io/hosting/installation/docker/\nservices:\n  n8n:\n    image: docker.io/n8nio/n8n:1.115.2\n    environment:\n      - N8N_BASIC_AUTH_ACTIVE=true\n      - N8N_BASIC_AUTH_USER=${N8N_USER}\n      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}\n      - N8N_PORT=5678\n      - N8N_PROTOCOL=http\n      - N8N_HOST=localhost\n      - N8N_EDITOR_BASE_URL=http://localhost:${N8N_PORT}\n      - WEBHOOK_URL=http://localhost:${N8N_PORT}/\n    ports:\n      - \"127.0.0.1:${N8N_PORT}:5678\"\n    volumes:\n      - n8n-data:/home/node/.n8n\n    healthcheck:\n      test: [\"CMD-SHELL\", \"wget -qO- http://localhost:5678/healthz >/dev/null 2>&1\"]\n      interval: 10s\n      timeout: 5s\n      retries: 20\n\nvolumes:\n  n8n-data:\n"
+    },
+    {
+      "id": "kafka-kafka-ui",
+      "name": "Kafka + Kafka UI",
+      "description": "Single-node Apache Kafka (KRaft mode, no ZooKeeper) with Kafka UI for browsing topics, messages and consumer groups.",
+      "category": "messaging",
+      "tags": [
+        "kafka",
+        "kraft",
+        "kafka-ui"
+      ],
+      "icon": "apachekafka",
+      "website": "https://kafka.apache.org",
+      "source": {
+        "name": "Apache Kafka official image docs + kafbat/kafka-ui (maintained fork of provectus/kafka-ui)",
+        "url": "https://github.com/kafbat/kafka-ui",
+        "license": "Apache-2.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 1536,
+      "variables": [
+        {
+          "name": "KAFKA_PORT",
+          "type": "port",
+          "label": "Kafka bootstrap port (host)",
+          "default": 9092
+        },
+        {
+          "name": "KAFKA_UI_PORT",
+          "type": "port",
+          "label": "Kafka UI port",
+          "default": 8085
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Kafka UI",
+          "url": "http://localhost:${KAFKA_UI_PORT}",
+          "primary": true
+        },
+        {
+          "name": "Bootstrap servers",
+          "value": "localhost:${KAFKA_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${KAFKA_UI_PORT}/actuator/health",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 150
+      },
+      "notes": "Single broker, no authentication — for local development only. The advertised listener is set to localhost:${KAFKA_PORT} so clients on the Mac host connect directly at 127.0.0.1:${KAFKA_PORT}; clients inside the compose network use kafka:29092.",
+      "compose": "# Adapted from the official apache/kafka image documentation (Apache-2.0, KRaft single-node quickstart:\n# https://kafka.apache.org/documentation/#quickstart) and kafbat/kafka-ui's own docker-compose examples\n# (Apache-2.0, https://github.com/kafbat/kafka-ui).\n#\n# Two listeners: PLAINTEXT (in-network, used by kafka-ui and other containers) and EXTERNAL\n# (advertised as localhost:${KAFKA_PORT} so the Mac host can connect at 127.0.0.1:${KAFKA_PORT}).\nservices:\n  kafka:\n    image: docker.io/apache/kafka:3.9.1\n    environment:\n      - KAFKA_NODE_ID=1\n      - KAFKA_PROCESS_ROLES=broker,controller\n      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,EXTERNAL://0.0.0.0:9092\n      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:29092,EXTERNAL://localhost:${KAFKA_PORT}\n      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT\n      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER\n      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:29093\n      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT\n      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1\n      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1\n      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1\n      - KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0\n      - CLUSTER_ID=ciWo7IWazngRchmPES6q5A==\n    ports:\n      - \"127.0.0.1:${KAFKA_PORT}:9092\"\n    volumes:\n      - kafka-data:/var/lib/kafka/data\n    healthcheck:\n      test:\n        [\n          \"CMD-SHELL\",\n          \"/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092 >/dev/null 2>&1\"\n        ]\n      interval: 10s\n      timeout: 10s\n      retries: 20\n\n  kafka-ui:\n    image: docker.io/kafbat/kafka-ui:v1.5.0\n    depends_on:\n      kafka:\n        condition: service_healthy\n    environment:\n      - KAFKA_CLUSTERS_0_NAME=local\n      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092\n      - DYNAMIC_CONFIG_ENABLED=true\n    ports:\n      - \"127.0.0.1:${KAFKA_UI_PORT}:8080\"\n\nvolumes:\n  kafka-data:\n"
+    },
+    {
+      "id": "rabbitmq",
+      "name": "RabbitMQ",
+      "description": "RabbitMQ message broker with the management plugin enabled for browsing queues, exchanges and connections.",
+      "category": "messaging",
+      "tags": [
+        "rabbitmq",
+        "amqp",
+        "queue"
+      ],
+      "icon": "rabbitmq",
+      "website": "https://www.rabbitmq.com",
+      "source": {
+        "name": "Official RabbitMQ Docker image documentation",
+        "url": "https://github.com/docker-library/docs/tree/master/rabbitmq",
+        "license": "MIT"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "RABBITMQ_USER",
+          "type": "string",
+          "label": "RabbitMQ user",
+          "default": "app"
+        },
+        {
+          "name": "RABBITMQ_PASSWORD",
+          "type": "password",
+          "label": "RabbitMQ password",
+          "length": 20
+        },
+        {
+          "name": "RABBITMQ_PORT",
+          "type": "port",
+          "label": "AMQP port",
+          "default": 5672
+        },
+        {
+          "name": "RABBITMQ_MGMT_PORT",
+          "type": "port",
+          "label": "Management UI port",
+          "default": 15672
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Management UI",
+          "url": "http://localhost:${RABBITMQ_MGMT_PORT}",
+          "username": "${RABBITMQ_USER}",
+          "password": "${RABBITMQ_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Connection string",
+          "value": "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:${RABBITMQ_PORT}/"
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 90
+      },
+      "compose": "# Adapted from the official RabbitMQ Docker image documentation (MIT)\n# https://github.com/docker-library/docs/tree/master/rabbitmq\nservices:\n  rabbitmq:\n    image: docker.io/library/rabbitmq:4.1.4-management-alpine\n    environment:\n      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}\n      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}\n    ports:\n      - \"127.0.0.1:${RABBITMQ_PORT}:5672\"\n      - \"127.0.0.1:${RABBITMQ_MGMT_PORT}:15672\"\n    volumes:\n      - rabbitmq-data:/var/lib/rabbitmq\n    healthcheck:\n      test: [\"CMD\", \"rabbitmq-diagnostics\", \"-q\", \"check_running\"]\n      interval: 10s\n      timeout: 10s\n      retries: 20\n\nvolumes:\n  rabbitmq-data:\n"
+    },
+    {
+      "id": "grafana-prometheus",
+      "name": "Grafana + Prometheus",
+      "description": "Prometheus metrics server pre-wired as a Grafana data source, for building dashboards over scraped metrics.",
+      "category": "monitoring",
+      "tags": [
+        "grafana",
+        "prometheus",
+        "metrics"
+      ],
+      "icon": "grafana",
+      "website": "https://grafana.com",
+      "source": {
+        "name": "docker/awesome-compose (prometheus-grafana)",
+        "url": "https://github.com/docker/awesome-compose/tree/main/prometheus-grafana",
+        "license": "CC0-1.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "GRAFANA_PASSWORD",
+          "type": "password",
+          "label": "Grafana admin password",
+          "length": 20
+        },
+        {
+          "name": "GRAFANA_PORT",
+          "type": "port",
+          "label": "Grafana port",
+          "default": 3000
+        },
+        {
+          "name": "PROMETHEUS_PORT",
+          "type": "port",
+          "label": "Prometheus port",
+          "default": 9090
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Grafana",
+          "url": "http://localhost:${GRAFANA_PORT}",
+          "username": "admin",
+          "password": "${GRAFANA_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Prometheus",
+          "url": "http://localhost:${PROMETHEUS_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${GRAFANA_PORT}/api/health",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 90
+      },
+      "notes": "Prometheus is configured to scrape itself only; the Prometheus data source is pre-provisioned in Grafana at http://prometheus:9090.",
+      "compose": "# Adapted from docker/awesome-compose (CC0-1.0) — prometheus-grafana sample\n# https://github.com/docker/awesome-compose/tree/main/prometheus-grafana\n#\n# No bind mounts are used (named volumes only), so a one-shot init container writes the\n# Prometheus scrape config and the Grafana datasource provisioning file into named volumes\n# before the real services start.\nservices:\n  prometheus-config:\n    image: docker.io/library/alpine:3.21\n    restart: \"no\"\n    volumes:\n      - prometheus-config:/config\n    entrypoint:\n      - sh\n      - -c\n      - |\n        cat > /config/prometheus.yml <<'EOF'\n        global:\n          scrape_interval: 15s\n        scrape_configs:\n          - job_name: prometheus\n            static_configs:\n              - targets: [\"localhost:9090\"]\n        EOF\n\n  grafana-provisioning:\n    image: docker.io/library/alpine:3.21\n    restart: \"no\"\n    volumes:\n      - grafana-provisioning:/config\n    entrypoint:\n      - sh\n      - -c\n      - |\n        mkdir -p /config/datasources\n        cat > /config/datasources/prometheus.yml <<'EOF'\n        apiVersion: 1\n        datasources:\n          - name: Prometheus\n            type: prometheus\n            access: proxy\n            url: http://prometheus:9090\n            isDefault: true\n        EOF\n\n  prometheus:\n    image: docker.io/prom/prometheus:v3.15.0\n    depends_on:\n      prometheus-config:\n        condition: service_completed_successfully\n    volumes:\n      - prometheus-config:/etc/prometheus\n      - prometheus-data:/prometheus\n    ports:\n      - \"127.0.0.1:${PROMETHEUS_PORT}:9090\"\n    healthcheck:\n      test: [\"CMD-SHELL\", \"wget -qO- http://localhost:9090/-/ready >/dev/null 2>&1\"]\n      interval: 10s\n      timeout: 5s\n      retries: 20\n\n  grafana:\n    image: docker.io/grafana/grafana:13.2.2\n    depends_on:\n      grafana-provisioning:\n        condition: service_completed_successfully\n      prometheus:\n        condition: service_healthy\n    environment:\n      - GF_SECURITY_ADMIN_USER=admin\n      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}\n    volumes:\n      - grafana-provisioning:/etc/grafana/provisioning\n      - grafana-data:/var/lib/grafana\n    ports:\n      - \"127.0.0.1:${GRAFANA_PORT}:3000\"\n\nvolumes:\n  prometheus-config:\n  prometheus-data:\n  grafana-provisioning:\n  grafana-data:\n"
+    },
+    {
+      "id": "jaeger",
+      "name": "Jaeger",
+      "description": "All-in-one Jaeger for distributed tracing: collector, query UI and in-memory storage in a single container.",
+      "category": "monitoring",
+      "tags": [
+        "jaeger",
+        "tracing",
+        "opentelemetry"
+      ],
+      "icon": "jaeger",
+      "website": "https://www.jaegertracing.io",
+      "source": {
+        "name": "Jaeger official documentation (all-in-one Docker quickstart)",
+        "url": "https://www.jaegertracing.io/docs/latest/getting-started/",
+        "license": "Apache-2.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "JAEGER_UI_PORT",
+          "type": "port",
+          "label": "Jaeger UI port",
+          "default": 16686
+        },
+        {
+          "name": "JAEGER_OTLP_GRPC_PORT",
+          "type": "port",
+          "label": "OTLP gRPC port",
+          "default": 4317
+        },
+        {
+          "name": "JAEGER_OTLP_HTTP_PORT",
+          "type": "port",
+          "label": "OTLP HTTP port",
+          "default": 4318
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Jaeger UI",
+          "url": "http://localhost:${JAEGER_UI_PORT}",
+          "primary": true
+        },
+        {
+          "name": "OTLP gRPC endpoint",
+          "value": "http://localhost:${JAEGER_OTLP_GRPC_PORT}"
+        },
+        {
+          "name": "OTLP HTTP endpoint",
+          "value": "http://localhost:${JAEGER_OTLP_HTTP_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${JAEGER_UI_PORT}",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 60
+      },
+      "notes": "Traces are stored in memory and lost on restart — for local development only. Point your app's OpenTelemetry exporter at the OTLP endpoint.",
+      "compose": "# Adapted from the official Jaeger all-in-one Docker quickstart (Apache-2.0)\n# https://www.jaegertracing.io/docs/latest/getting-started/\nservices:\n  jaeger:\n    image: docker.io/jaegertracing/jaeger:2.21.0\n    environment:\n      - COLLECTOR_OTLP_ENABLED=true\n    ports:\n      - \"127.0.0.1:${JAEGER_UI_PORT}:16686\"\n      - \"127.0.0.1:${JAEGER_OTLP_GRPC_PORT}:4317\"\n      - \"127.0.0.1:${JAEGER_OTLP_HTTP_PORT}:4318\"\n    healthcheck:\n      test: [\"CMD-SHELL\", \"wget -qO- http://localhost:16686 >/dev/null 2>&1\"]\n      interval: 10s\n      timeout: 5s\n      retries: 20\n"
+    },
+    {
+      "id": "loki-grafana",
+      "name": "Loki + Grafana",
+      "description": "Grafana Loki log aggregation, pre-wired as a Grafana data source for exploring logs.",
+      "category": "monitoring",
+      "tags": [
+        "loki",
+        "grafana",
+        "logs"
+      ],
+      "icon": "grafana",
+      "website": "https://grafana.com/oss/loki/",
+      "source": {
+        "name": "Grafana Loki official documentation (docker-compose quickstart pattern)",
+        "url": "https://github.com/grafana/loki/tree/main/production",
+        "license": "Apache-2.0 (documentation/compose pattern); the Loki and Grafana server images themselves are AGPL-3.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 512,
+      "variables": [
+        {
+          "name": "GRAFANA_PASSWORD",
+          "type": "password",
+          "label": "Grafana admin password",
+          "length": 20
+        },
+        {
+          "name": "GRAFANA_PORT",
+          "type": "port",
+          "label": "Grafana port",
+          "default": 3000
+        },
+        {
+          "name": "LOKI_PORT",
+          "type": "port",
+          "label": "Loki API port",
+          "default": 3100
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Grafana",
+          "url": "http://localhost:${GRAFANA_PORT}",
+          "username": "admin",
+          "password": "${GRAFANA_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Loki API",
+          "url": "http://localhost:${LOKI_PORT}"
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${GRAFANA_PORT}/api/health",
+        "expectStatus": [
+          200
+        ],
+        "timeoutSec": 90
+      },
+      "notes": "Loki runs in single-binary filesystem mode. Ship logs to it with Promtail/Alloy or the Docker driver; the Loki data source is pre-provisioned in Grafana at http://loki:3100.",
+      "compose": "# Adapted from Grafana Loki's official docker-compose quickstart pattern\n# (https://github.com/grafana/loki/tree/main/production, Apache-2.0 docs), using the official\n# loki and grafana images. No bind mounts (named volumes only): a one-shot init container writes\n# Loki's config and Grafana's datasource provisioning file into named volumes first.\nservices:\n  loki-config:\n    image: docker.io/library/alpine:3.21\n    restart: \"no\"\n    volumes:\n      - loki-config:/config\n    entrypoint:\n      - sh\n      - -c\n      - |\n        cat > /config/loki-config.yml <<'EOF'\n        auth_enabled: false\n        server:\n          http_listen_port: 3100\n        common:\n          path_prefix: /loki\n          storage:\n            filesystem:\n              chunks_directory: /loki/chunks\n              rules_directory: /loki/rules\n          replication_factor: 1\n          ring:\n            kvstore:\n              store: inmemory\n        schema_config:\n          configs:\n            - from: 2024-01-01\n              store: tsdb\n              object_store: filesystem\n              schema: v13\n              index:\n                prefix: index_\n                period: 24h\n        limits_config:\n          allow_structured_metadata: true\n        EOF\n\n  grafana-provisioning:\n    image: docker.io/library/alpine:3.21\n    restart: \"no\"\n    volumes:\n      - grafana-provisioning:/config\n    entrypoint:\n      - sh\n      - -c\n      - |\n        mkdir -p /config/datasources\n        cat > /config/datasources/loki.yml <<'EOF'\n        apiVersion: 1\n        datasources:\n          - name: Loki\n            type: loki\n            access: proxy\n            url: http://loki:3100\n            isDefault: true\n        EOF\n\n  loki:\n    image: docker.io/grafana/loki:3.7.8\n    depends_on:\n      loki-config:\n        condition: service_completed_successfully\n    command: [\"-config.file=/etc/loki/loki-config.yml\"]\n    volumes:\n      - loki-config:/etc/loki\n      - loki-data:/loki\n    ports:\n      - \"127.0.0.1:${LOKI_PORT}:3100\"\n    # No healthcheck: grafana/loki's image ships only the loki binary (no shell, wget or curl),\n    # so a CMD-SHELL probe can't run inside it. Grafana's own healthcheck (below) is what the\n    # \"healthy\" ready probe waits on; Grafana's datasource proxy will simply retry until Loki\n    # answers, which in practice is a couple of seconds after the container starts.\n\n  grafana:\n    image: docker.io/grafana/grafana:13.2.2\n    depends_on:\n      grafana-provisioning:\n        condition: service_completed_successfully\n      loki:\n        condition: service_started\n    environment:\n      - GF_SECURITY_ADMIN_USER=admin\n      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}\n    volumes:\n      - grafana-provisioning:/etc/grafana/provisioning\n      - grafana-data:/var/lib/grafana\n    ports:\n      - \"127.0.0.1:${GRAFANA_PORT}:3000\"\n\nvolumes:\n  loki-config:\n  loki-data:\n  grafana-provisioning:\n  grafana-data:\n"
+    },
+    {
+      "id": "elasticsearch",
+      "name": "Elasticsearch",
+      "description": "Single-node Elasticsearch with security enabled, for local search and indexing experiments.",
+      "category": "search",
+      "tags": [
+        "elasticsearch",
+        "search",
+        "elk"
+      ],
+      "icon": "elasticsearch",
+      "website": "https://www.elastic.co/elasticsearch",
+      "source": {
+        "name": "deviantony/docker-elk",
+        "url": "https://github.com/deviantony/docker-elk",
+        "license": "MIT"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 2048,
+      "variables": [
+        {
+          "name": "ELASTIC_PASSWORD",
+          "type": "password",
+          "label": "elastic superuser password",
+          "length": 24
+        },
+        {
+          "name": "ES_PORT",
+          "type": "port",
+          "label": "Elasticsearch HTTP port",
+          "default": 9200
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Elasticsearch API",
+          "url": "http://localhost:${ES_PORT}",
+          "username": "elastic",
+          "password": "${ELASTIC_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "curl example",
+          "value": "curl -u elastic:${ELASTIC_PASSWORD} http://localhost:${ES_PORT}"
+        }
+      ],
+      "preflight": [
+        {
+          "type": "sysctl",
+          "key": "vm.max_map_count",
+          "min": 262144
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${ES_PORT}/_cluster/health",
+        "expectStatus": [
+          200,
+          401
+        ],
+        "timeoutSec": 180
+      },
+      "notes": "Security is enabled. The built-in `elastic` superuser password is set on first boot from ELASTIC_PASSWORD.",
+      "compose": "# Adapted from deviantony/docker-elk (MIT) — https://github.com/deviantony/docker-elk\n# Single-node variant with security enabled, tuned for local development.\nservices:\n  elasticsearch:\n    image: docker.io/library/elasticsearch:8.19.0\n    environment:\n      - discovery.type=single-node\n      - xpack.security.enabled=true\n      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}\n      - ES_JAVA_OPTS=-Xms1g -Xmx1g\n    ports:\n      - \"127.0.0.1:${ES_PORT}:9200\"\n    volumes:\n      - es-data:/usr/share/elasticsearch/data\n    healthcheck:\n      test:\n        [\n          \"CMD-SHELL\",\n          \"curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\\\"status\\\":\\\"green\\\"\\\\|\\\"status\\\":\\\"yellow\\\"'\"\n        ]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\nvolumes:\n  es-data:\n"
+    },
+    {
+      "id": "elasticsearch-kibana",
+      "name": "Elasticsearch + Kibana",
+      "description": "Single-node Elasticsearch with security enabled, plus Kibana for browsing and visualizing data.",
+      "category": "search",
+      "tags": [
+        "elasticsearch",
+        "kibana",
+        "elk",
+        "logs"
+      ],
+      "icon": "kibana",
+      "website": "https://www.elastic.co/kibana",
+      "source": {
+        "name": "deviantony/docker-elk",
+        "url": "https://github.com/deviantony/docker-elk",
+        "license": "MIT"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 3072,
+      "variables": [
+        {
+          "name": "ELASTIC_PASSWORD",
+          "type": "password",
+          "label": "elastic superuser password",
+          "length": 24
+        },
+        {
+          "name": "KIBANA_SYSTEM_PASSWORD",
+          "type": "password",
+          "label": "kibana_system password",
+          "length": 24,
+          "hidden": true
+        },
+        {
+          "name": "ES_PORT",
+          "type": "port",
+          "label": "Elasticsearch HTTP port",
+          "default": 9200
+        },
+        {
+          "name": "KIBANA_PORT",
+          "type": "port",
+          "label": "Kibana port",
+          "default": 5601
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "Kibana",
+          "url": "http://localhost:${KIBANA_PORT}",
+          "username": "elastic",
+          "password": "${ELASTIC_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "Elasticsearch API",
+          "url": "http://localhost:${ES_PORT}",
+          "username": "elastic",
+          "password": "${ELASTIC_PASSWORD}"
+        }
+      ],
+      "preflight": [
+        {
+          "type": "sysctl",
+          "key": "vm.max_map_count",
+          "min": 262144
+        }
+      ],
+      "ready": {
+        "type": "http",
+        "url": "http://localhost:${KIBANA_PORT}/api/status",
+        "expectStatus": [
+          200,
+          401
+        ],
+        "timeoutSec": 240
+      },
+      "notes": "A one-shot setup container sets the kibana_system password via the Elasticsearch security API before Kibana starts, exactly like docker-elk does. Sign in to Kibana with the elastic user.",
+      "compose": "# Adapted from deviantony/docker-elk (MIT) — https://github.com/deviantony/docker-elk\n# The kibana_system password setup step mirrors docker-elk's setup service pattern.\nservices:\n  elasticsearch:\n    image: docker.io/library/elasticsearch:8.19.0\n    environment:\n      - discovery.type=single-node\n      - xpack.security.enabled=true\n      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}\n      - ES_JAVA_OPTS=-Xms1g -Xmx1g\n    ports:\n      - \"127.0.0.1:${ES_PORT}:9200\"\n    volumes:\n      - es-data:/usr/share/elasticsearch/data\n    healthcheck:\n      test:\n        [\n          \"CMD-SHELL\",\n          \"curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\\\"status\\\":\\\"green\\\"\\\\|\\\"status\\\":\\\"yellow\\\"'\"\n        ]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\n  setup-kibana-user:\n    image: docker.io/library/elasticsearch:8.19.0\n    depends_on:\n      elasticsearch:\n        condition: service_healthy\n    restart: \"no\"\n    entrypoint:\n      - bash\n      - -c\n      - >\n        curl -s -u elastic:${ELASTIC_PASSWORD}\n        -X POST http://elasticsearch:9200/_security/user/kibana_system/_password\n        -H \"Content-Type: application/json\"\n        -d \"{\\\"password\\\":\\\"${KIBANA_SYSTEM_PASSWORD}\\\"}\"\n\n  kibana:\n    image: docker.io/library/kibana:8.19.0\n    depends_on:\n      elasticsearch:\n        condition: service_healthy\n      setup-kibana-user:\n        condition: service_completed_successfully\n    environment:\n      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200\n      - ELASTICSEARCH_USERNAME=kibana_system\n      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}\n    ports:\n      - \"127.0.0.1:${KIBANA_PORT}:5601\"\n    healthcheck:\n      test: [\"CMD-SHELL\", \"curl -s http://localhost:5601/api/status | grep -q '\\\"level\\\":\\\"available\\\"'\"]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\nvolumes:\n  es-data:\n"
+    },
+    {
+      "id": "opensearch-dashboards",
+      "name": "OpenSearch + Dashboards",
+      "description": "Single-node OpenSearch with the demo security plugin, plus OpenSearch Dashboards for browsing and visualizing data.",
+      "category": "search",
+      "tags": [
+        "opensearch",
+        "search",
+        "dashboards"
+      ],
+      "icon": "opensearch",
+      "website": "https://opensearch.org",
+      "source": {
+        "name": "opensearch-project/documentation-website (official Docker Compose quickstart)",
+        "url": "https://github.com/opensearch-project/documentation-website",
+        "license": "Apache-2.0"
+      },
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "minMemoryMB": 3072,
+      "variables": [
+        {
+          "name": "OPENSEARCH_PASSWORD",
+          "type": "password",
+          "label": "admin password",
+          "length": 24
+        },
+        {
+          "name": "OPENSEARCH_PORT",
+          "type": "port",
+          "label": "OpenSearch HTTP port",
+          "default": 9200
+        },
+        {
+          "name": "DASHBOARDS_PORT",
+          "type": "port",
+          "label": "Dashboards port",
+          "default": 5601
+        }
+      ],
+      "endpoints": [
+        {
+          "name": "OpenSearch Dashboards",
+          "url": "http://localhost:${DASHBOARDS_PORT}",
+          "username": "admin",
+          "password": "${OPENSEARCH_PASSWORD}",
+          "primary": true
+        },
+        {
+          "name": "OpenSearch API",
+          "url": "https://localhost:${OPENSEARCH_PORT}",
+          "username": "admin",
+          "password": "${OPENSEARCH_PASSWORD}"
+        }
+      ],
+      "preflight": [
+        {
+          "type": "sysctl",
+          "key": "vm.max_map_count",
+          "min": 262144
+        }
+      ],
+      "ready": {
+        "type": "healthy",
+        "timeoutSec": 240
+      },
+      "notes": "The OpenSearch API listens on HTTPS with a self-signed demo certificate; browsers and curl need -k / an exception. The admin password must satisfy OpenSearch's strong-password policy (12+ chars, upper/lower/digit/symbol) — the generated password is checked against this.",
+      "compose": "# Adapted from the official OpenSearch Docker Compose quickstart (Apache-2.0)\n# https://github.com/opensearch-project/documentation-website (assets/examples/docker-compose.yml)\n# Single-node variant. The default OpenSearch password policy requires a special character;\n# it is relaxed to length-only here so the generated alphanumeric password is accepted.\nservices:\n  opensearch:\n    image: docker.io/opensearchproject/opensearch:3.8.0\n    environment:\n      - discovery.type=single-node\n      - cluster.name=colima-desktop-opensearch\n      - node.name=opensearch\n      - bootstrap.memory_lock=true\n      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g\n      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}\n      - \"plugins.security.restapi.password_validation_regex=^.{8,}$$\"\n      - plugins.security.restapi.password_validation_error_message=Password must be at least 8 characters.\n    ulimits:\n      memlock:\n        soft: -1\n        hard: -1\n      nofile:\n        soft: 65536\n        hard: 65536\n    ports:\n      - \"127.0.0.1:${OPENSEARCH_PORT}:9200\"\n    volumes:\n      - opensearch-data:/usr/share/opensearch/data\n    healthcheck:\n      test:\n        [\n          \"CMD-SHELL\",\n          \"curl -sk -u admin:${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health | grep -q '\\\"status\\\":\\\"green\\\"\\\\|\\\"status\\\":\\\"yellow\\\"'\"\n        ]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\n  dashboards:\n    image: docker.io/opensearchproject/opensearch-dashboards:3.8.0\n    depends_on:\n      opensearch:\n        condition: service_healthy\n    environment:\n      - 'OPENSEARCH_HOSTS=[\"https://opensearch:9200\"]'\n      - OPENSEARCH_USERNAME=admin\n      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}\n    ports:\n      - \"127.0.0.1:${DASHBOARDS_PORT}:5601\"\n    healthcheck:\n      test:\n        [\n          \"CMD-SHELL\",\n          \"curl -sf -u admin:${OPENSEARCH_PASSWORD} http://localhost:5601/api/status | grep -q '\\\"state\\\":\\\"green\\\"\\\\|\\\"state\\\":\\\"yellow\\\"'\"\n        ]\n      interval: 10s\n      timeout: 5s\n      retries: 30\n\nvolumes:\n  opensearch-data:\n"
+    }
+  ]
+}

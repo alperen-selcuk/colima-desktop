@@ -103,3 +103,33 @@ jobs:
       - name: Bundle smoke build (Linux .deb)
         if: runner.os == 'Linux'
         run: npx tauri build --bundles deb
+
+  catalog:
+    name: Marketplace catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: catalog:build --check (dist/catalog.json must be up to date)
+        run: npm run catalog:build -- --check
+
+      - name: Render + validate every app's compose.yml (docker compose config)
+        run: node scripts/validate-catalog.mjs
+
+      - name: Up-smoke light apps (mailpit, redis-redisinsight, postgres-pgadmin)
+        run: node scripts/smoke-catalog.mjs mailpit redis-redisinsight postgres-pgadmin
+
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color

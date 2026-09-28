@@ -1,0 +1,33 @@
+{
+  "id": "keycloak-postgres",
+  "name": "Keycloak + PostgreSQL",
+  "description": "Keycloak identity and access management backed by PostgreSQL, for local OIDC/SAML development.",
+  "category": "auth",
+  "tags": ["keycloak", "oidc", "sso", "postgres"],
+  "icon": "keycloak",
+  "website": "https://www.keycloak.org",
+  "source": {
+    "name": "Keycloak official documentation (Docker Compose example)",
+    "url": "https://www.keycloak.org/server/containers",
+    "license": "Apache-2.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 1024,
+  "variables": [
+    { "name": "KEYCLOAK_ADMIN", "type": "string", "label": "Keycloak admin user", "default": "admin" },
+    { "name": "KEYCLOAK_ADMIN_PASSWORD", "type": "password", "label": "Keycloak admin password", "length": 20 },
+    { "name": "KEYCLOAK_PORT", "type": "port", "label": "Keycloak port", "default": 8090 },
+    { "name": "PG_PASSWORD", "type": "password", "label": "PostgreSQL password", "length": 20, "hidden": true }
+  ],
+  "endpoints": [
+    {
+      "name": "Keycloak Admin Console",
+      "url": "http://localhost:${KEYCLOAK_PORT}",
+      "username": "${KEYCLOAK_ADMIN}",
+      "password": "${KEYCLOAK_ADMIN_PASSWORD}",
+      "primary": true
+    }
+  ],
+  "ready": { "type": "healthy", "timeoutSec": 180 },
+  "notes": "Runs in `start-dev` mode (HTTP allowed, no TLS) — for local development only. Data is persisted in the PostgreSQL volume."
+}

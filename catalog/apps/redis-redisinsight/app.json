@@ -1,0 +1,34 @@
+{
+  "id": "redis-redisinsight",
+  "name": "Redis + RedisInsight",
+  "description": "Redis in-memory data store with RedisInsight for browsing keys, running commands and monitoring.",
+  "category": "database",
+  "tags": ["redis", "cache", "redisinsight"],
+  "icon": "redis",
+  "website": "https://redis.io",
+  "source": {
+    "name": "docker/awesome-compose (official redis + redisinsight images)",
+    "url": "https://github.com/docker/awesome-compose",
+    "license": "CC0-1.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 256,
+  "variables": [
+    { "name": "REDIS_PASSWORD", "type": "password", "label": "Redis password", "length": 20 },
+    { "name": "REDIS_PORT", "type": "port", "label": "Redis port", "default": 6379 },
+    { "name": "REDISINSIGHT_PORT", "type": "port", "label": "RedisInsight port", "default": 5540 }
+  ],
+  "endpoints": [
+    {
+      "name": "RedisInsight",
+      "url": "http://localhost:${REDISINSIGHT_PORT}",
+      "primary": true
+    },
+    {
+      "name": "Connection string",
+      "value": "redis://:${REDIS_PASSWORD}@localhost:${REDIS_PORT}"
+    }
+  ],
+  "ready": { "type": "healthy", "timeoutSec": 60 },
+  "notes": "RedisInsight has no login by default; add a database with host `redis`, port 6379 and the generated password to connect."
+}

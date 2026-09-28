@@ -16,6 +16,7 @@ import { MachinesPage } from "./pages/Machines";
 import { ContainersPage } from "./pages/Containers";
 import { ImagesPage } from "./pages/Images";
 import { VolumesPage } from "./pages/Volumes";
+import { MarketplacePage } from "./pages/Marketplace";
 import { KubernetesPage } from "./pages/Kubernetes";
 import { SetupPage } from "./pages/Setup";
 
@@ -80,7 +81,14 @@ function AppShell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        const id = page === "containers" ? "containers-search" : page === "images" ? "images-search" : null;
+        const id =
+          page === "containers"
+            ? "containers-search"
+            : page === "images"
+              ? "images-search"
+              : page === "marketplace"
+                ? "marketplace-search"
+                : null;
         if (id) {
           e.preventDefault();
           document.getElementById(id)?.focus();
@@ -183,6 +191,8 @@ function AppShell() {
         return <ImagesPage profile={selected} />;
       case "volumes":
         return <VolumesPage profile={selected} />;
+      case "marketplace":
+        return <MarketplacePage profile={selected} />;
       case "kubernetes":
         return (
           <KubernetesPage

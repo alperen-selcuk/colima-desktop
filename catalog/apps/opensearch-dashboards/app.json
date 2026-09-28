@@ -1,0 +1,39 @@
+{
+  "id": "opensearch-dashboards",
+  "name": "OpenSearch + Dashboards",
+  "description": "Single-node OpenSearch with the demo security plugin, plus OpenSearch Dashboards for browsing and visualizing data.",
+  "category": "search",
+  "tags": ["opensearch", "search", "dashboards"],
+  "icon": "opensearch",
+  "website": "https://opensearch.org",
+  "source": {
+    "name": "opensearch-project/documentation-website (official Docker Compose quickstart)",
+    "url": "https://github.com/opensearch-project/documentation-website",
+    "license": "Apache-2.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 3072,
+  "variables": [
+    { "name": "OPENSEARCH_PASSWORD", "type": "password", "label": "admin password", "length": 24 },
+    { "name": "OPENSEARCH_PORT", "type": "port", "label": "OpenSearch HTTP port", "default": 9200 },
+    { "name": "DASHBOARDS_PORT", "type": "port", "label": "Dashboards port", "default": 5601 }
+  ],
+  "endpoints": [
+    {
+      "name": "OpenSearch Dashboards",
+      "url": "http://localhost:${DASHBOARDS_PORT}",
+      "username": "admin",
+      "password": "${OPENSEARCH_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "OpenSearch API",
+      "url": "https://localhost:${OPENSEARCH_PORT}",
+      "username": "admin",
+      "password": "${OPENSEARCH_PASSWORD}"
+    }
+  ],
+  "preflight": [{ "type": "sysctl", "key": "vm.max_map_count", "min": 262144 }],
+  "ready": { "type": "healthy", "timeoutSec": 240 },
+  "notes": "The OpenSearch API listens on HTTPS with a self-signed demo certificate; browsers and curl need -k / an exception. The admin password must satisfy OpenSearch's strong-password policy (12+ chars, upper/lower/digit/symbol) — the generated password is checked against this."
+}

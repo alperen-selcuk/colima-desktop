@@ -1,0 +1,21 @@
+# Adapted from the official Mailpit documentation (MIT)
+# https://github.com/axllent/mailpit
+services:
+  mailpit:
+    image: docker.io/axllent/mailpit:v1.31.3
+    ports:
+      - "127.0.0.1:${MAILPIT_SMTP_PORT}:1025"
+      - "127.0.0.1:${MAILPIT_UI_PORT}:8025"
+    volumes:
+      - mailpit-data:/data
+    environment:
+      - MP_MAX_MESSAGES=5000
+      - MP_DATABASE=/data/mailpit.db
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8025/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mailpit-data:

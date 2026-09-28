@@ -1,0 +1,38 @@
+{
+  "id": "kafka-kafka-ui",
+  "name": "Kafka + Kafka UI",
+  "description": "Single-node Apache Kafka (KRaft mode, no ZooKeeper) with Kafka UI for browsing topics, messages and consumer groups.",
+  "category": "messaging",
+  "tags": ["kafka", "kraft", "kafka-ui"],
+  "icon": "apachekafka",
+  "website": "https://kafka.apache.org",
+  "source": {
+    "name": "Apache Kafka official image docs + kafbat/kafka-ui (maintained fork of provectus/kafka-ui)",
+    "url": "https://github.com/kafbat/kafka-ui",
+    "license": "Apache-2.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 1536,
+  "variables": [
+    { "name": "KAFKA_PORT", "type": "port", "label": "Kafka bootstrap port (host)", "default": 9092 },
+    { "name": "KAFKA_UI_PORT", "type": "port", "label": "Kafka UI port", "default": 8085 }
+  ],
+  "endpoints": [
+    {
+      "name": "Kafka UI",
+      "url": "http://localhost:${KAFKA_UI_PORT}",
+      "primary": true
+    },
+    {
+      "name": "Bootstrap servers",
+      "value": "localhost:${KAFKA_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${KAFKA_UI_PORT}/actuator/health",
+    "expectStatus": [200],
+    "timeoutSec": 150
+  },
+  "notes": "Single broker, no authentication — for local development only. The advertised listener is set to localhost:${KAFKA_PORT} so clients on the Mac host connect directly at 127.0.0.1:${KAFKA_PORT}; clients inside the compose network use kafka:29092."
+}

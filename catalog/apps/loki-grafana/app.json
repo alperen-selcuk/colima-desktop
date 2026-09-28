@@ -1,0 +1,41 @@
+{
+  "id": "loki-grafana",
+  "name": "Loki + Grafana",
+  "description": "Grafana Loki log aggregation, pre-wired as a Grafana data source for exploring logs.",
+  "category": "monitoring",
+  "tags": ["loki", "grafana", "logs"],
+  "icon": "grafana",
+  "website": "https://grafana.com/oss/loki/",
+  "source": {
+    "name": "Grafana Loki official documentation (docker-compose quickstart pattern)",
+    "url": "https://github.com/grafana/loki/tree/main/production",
+    "license": "Apache-2.0 (documentation/compose pattern); the Loki and Grafana server images themselves are AGPL-3.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "GRAFANA_PASSWORD", "type": "password", "label": "Grafana admin password", "length": 20 },
+    { "name": "GRAFANA_PORT", "type": "port", "label": "Grafana port", "default": 3000 },
+    { "name": "LOKI_PORT", "type": "port", "label": "Loki API port", "default": 3100 }
+  ],
+  "endpoints": [
+    {
+      "name": "Grafana",
+      "url": "http://localhost:${GRAFANA_PORT}",
+      "username": "admin",
+      "password": "${GRAFANA_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Loki API",
+      "url": "http://localhost:${LOKI_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${GRAFANA_PORT}/api/health",
+    "expectStatus": [200],
+    "timeoutSec": 90
+  },
+  "notes": "Loki runs in single-binary filesystem mode. Ship logs to it with Promtail/Alloy or the Docker driver; the Loki data source is pre-provisioned in Grafana at http://loki:3100."
+}

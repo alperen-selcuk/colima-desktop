@@ -1,0 +1,53 @@
+{
+  "id": "mailpit",
+  "name": "Mailpit",
+  "description": "SMTP test server that catches outgoing mail and shows it in a web UI — no real emails are sent.",
+  "category": "devtools",
+  "tags": [
+    "smtp",
+    "email",
+    "testing"
+  ],
+  "icon": "mailpit",
+  "website": "https://mailpit.axllent.org",
+  "source": {
+    "name": "Mailpit official documentation (Docker install)",
+    "url": "https://github.com/axllent/mailpit",
+    "license": "MIT"
+  },
+  "architectures": [
+    "amd64",
+    "arm64"
+  ],
+  "minMemoryMB": 256,
+  "variables": [
+    {
+      "name": "MAILPIT_SMTP_PORT",
+      "type": "port",
+      "label": "SMTP port",
+      "default": 1025
+    },
+    {
+      "name": "MAILPIT_UI_PORT",
+      "type": "port",
+      "label": "Web UI port",
+      "default": 8025
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "Mailpit UI",
+      "url": "http://localhost:${MAILPIT_UI_PORT}",
+      "primary": true
+    },
+    {
+      "name": "SMTP server",
+      "value": "smtp://localhost:${MAILPIT_SMTP_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "healthy",
+    "timeoutSec": 30
+  },
+  "notes": "Point any app's SMTP settings at localhost:${MAILPIT_SMTP_PORT} with no auth and no TLS; every message shows up in the web UI."
+}

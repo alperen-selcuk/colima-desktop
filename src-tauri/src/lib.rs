@@ -13,6 +13,7 @@ mod k3s;
 mod k8s;
 mod kubeconfig;
 mod logs;
+mod marketplace;
 mod pty;
 mod quantity;
 mod state;
@@ -63,6 +64,13 @@ pub fn run() {
             compose::compose_preview,
             compose::compose_up,
             compose::compose_action,
+            marketplace::marketplace_catalog,
+            marketplace::marketplace_prepare,
+            marketplace::marketplace_preflight,
+            marketplace::marketplace_fix_preflight,
+            marketplace::marketplace_install,
+            marketplace::marketplace_installed,
+            marketplace::marketplace_uninstall,
             k8s::k8s_namespaces,
             k8s::k8s_pods,
             k8s::k8s_deployments,

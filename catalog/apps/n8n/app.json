@@ -1,0 +1,37 @@
+{
+  "id": "n8n",
+  "name": "n8n",
+  "description": "n8n workflow automation platform for building integrations and automations with a visual editor.",
+  "category": "devtools",
+  "tags": ["n8n", "automation", "workflow"],
+  "icon": "n8n",
+  "website": "https://n8n.io",
+  "source": {
+    "name": "n8n official Docker documentation",
+    "url": "https://docs.n8n.io/hosting/installation/docker/",
+    "license": "Sustainable Use License (n8n server); documentation used under fair use"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 1024,
+  "variables": [
+    { "name": "N8N_USER", "type": "string", "label": "n8n login email", "default": "admin@example.com" },
+    { "name": "N8N_PASSWORD", "type": "password", "label": "n8n login password", "length": 20 },
+    { "name": "N8N_PORT", "type": "port", "label": "n8n port", "default": 5678 }
+  ],
+  "endpoints": [
+    {
+      "name": "n8n",
+      "url": "http://localhost:${N8N_PORT}",
+      "username": "${N8N_USER}",
+      "password": "${N8N_PASSWORD}",
+      "primary": true
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${N8N_PORT}/healthz",
+    "expectStatus": [200],
+    "timeoutSec": 90
+  },
+  "notes": "Uses n8n's built-in basic auth for a single local user. Workflow data is stored in SQLite in a named volume."
+}

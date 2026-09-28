@@ -1,0 +1,41 @@
+{
+  "id": "grafana-prometheus",
+  "name": "Grafana + Prometheus",
+  "description": "Prometheus metrics server pre-wired as a Grafana data source, for building dashboards over scraped metrics.",
+  "category": "monitoring",
+  "tags": ["grafana", "prometheus", "metrics"],
+  "icon": "grafana",
+  "website": "https://grafana.com",
+  "source": {
+    "name": "docker/awesome-compose (prometheus-grafana)",
+    "url": "https://github.com/docker/awesome-compose/tree/main/prometheus-grafana",
+    "license": "CC0-1.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "GRAFANA_PASSWORD", "type": "password", "label": "Grafana admin password", "length": 20 },
+    { "name": "GRAFANA_PORT", "type": "port", "label": "Grafana port", "default": 3000 },
+    { "name": "PROMETHEUS_PORT", "type": "port", "label": "Prometheus port", "default": 9090 }
+  ],
+  "endpoints": [
+    {
+      "name": "Grafana",
+      "url": "http://localhost:${GRAFANA_PORT}",
+      "username": "admin",
+      "password": "${GRAFANA_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Prometheus",
+      "url": "http://localhost:${PROMETHEUS_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${GRAFANA_PORT}/api/health",
+    "expectStatus": [200],
+    "timeoutSec": 90
+  },
+  "notes": "Prometheus is configured to scrape itself only; the Prometheus data source is pre-provisioned in Grafana at http://prometheus:9090."
+}
