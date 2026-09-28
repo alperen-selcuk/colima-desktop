@@ -14,6 +14,7 @@ cask "colima-desktop" do
 
   depends_on formula: "colima"
   depends_on formula: "docker"
+  depends_on formula: "docker-compose"
   depends_on :macos
 
   app "Colima Desktop.app"
@@ -43,5 +44,13 @@ cask "colima-desktop" do
 
     For the Kubernetes view, also install kubectl:
       brew install kubectl
+
+    For the Docker Compose view, `docker-compose` is installed automatically as a
+    dependency of this cask and used as a CLI plugin (`docker compose ...`), not the
+    standalone `docker-compose` command. If `docker compose version` doesn't find it,
+    point Docker at Homebrew's plugin directory by adding to your docker config
+    (usually ~/.docker/config.json):
+      "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"]
+    See `brew info docker-compose` for details.
   EOS
 end

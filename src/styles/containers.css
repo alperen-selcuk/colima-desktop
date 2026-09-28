@@ -1,0 +1,213 @@
+/*
+ * Containers page tokens (§6.7). Separate from src/index.css (owned by
+ * another concurrent workstream) so this page's redesign never conflicts —
+ * same pattern as src/styles/k8s.css.
+ *
+ * --docker-blue is this page's own chrome accent (header mark, compose
+ * badge, tab underline), sitting alongside the app's own green brand accent
+ * (still used for primary buttons and focus rings everywhere else) — same
+ * relationship k8s.css has with --k8s-blue.
+ *
+ * --ctr-fallback-1..8 are the ~8 harmonious fallback tile colours for the
+ * generic container glyph (src/lib/imageIcon.ts picks one via a stable hash
+ * of the image name); chosen to read clearly as tinted tiles in both themes
+ * without competing with the docker-blue/green accents or the status dots.
+ *
+ * Same three-block pattern as index.css/k8s.css: light default in :root,
+ * dark via prefers-color-scheme, and explicit data-theme overrides.
+ */
+
+:root {
+  --docker-blue: #1d63ed;
+  --docker-blue-soft: rgba(29, 99, 237, 0.1);
+
+  --ctr-fallback-1: #4d6bb3;
+  --ctr-fallback-2: #a1780a;
+  --ctr-fallback-3: #8b2fc9;
+  --ctr-fallback-4: #0f8fa8;
+  --ctr-fallback-5: #b3554d;
+  --ctr-fallback-6: #1f9d73;
+  --ctr-fallback-7: #6d5bb0;
+  --ctr-fallback-8: #b0568a;
+
+  --ctr-fallback-1-soft: rgba(77, 107, 179, 0.14);
+  --ctr-fallback-2-soft: rgba(161, 120, 10, 0.14);
+  --ctr-fallback-3-soft: rgba(139, 47, 201, 0.12);
+  --ctr-fallback-4-soft: rgba(15, 143, 168, 0.14);
+  --ctr-fallback-5-soft: rgba(179, 85, 77, 0.14);
+  --ctr-fallback-6-soft: rgba(31, 157, 115, 0.14);
+  --ctr-fallback-7-soft: rgba(109, 91, 176, 0.14);
+  --ctr-fallback-8-soft: rgba(176, 86, 138, 0.14);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --docker-blue: #4d8bff;
+    --docker-blue-soft: rgba(77, 139, 255, 0.16);
+
+    --ctr-fallback-1: #7d99e0;
+    --ctr-fallback-2: #d6a419;
+    --ctr-fallback-3: #b57bf0;
+    --ctr-fallback-4: #22b8cf;
+    --ctr-fallback-5: #e0847a;
+    --ctr-fallback-6: #2fb786;
+    --ctr-fallback-7: #9a8bd6;
+    --ctr-fallback-8: #e08cb8;
+
+    --ctr-fallback-1-soft: rgba(125, 153, 224, 0.18);
+    --ctr-fallback-2-soft: rgba(214, 164, 25, 0.18);
+    --ctr-fallback-3-soft: rgba(181, 123, 240, 0.18);
+    --ctr-fallback-4-soft: rgba(34, 184, 207, 0.18);
+    --ctr-fallback-5-soft: rgba(224, 132, 122, 0.18);
+    --ctr-fallback-6-soft: rgba(47, 183, 134, 0.18);
+    --ctr-fallback-7-soft: rgba(154, 139, 214, 0.18);
+    --ctr-fallback-8-soft: rgba(224, 140, 184, 0.18);
+  }
+}
+
+:root[data-theme="dark"] {
+  --docker-blue: #4d8bff;
+  --docker-blue-soft: rgba(77, 139, 255, 0.16);
+
+  --ctr-fallback-1: #7d99e0;
+  --ctr-fallback-2: #d6a419;
+  --ctr-fallback-3: #b57bf0;
+  --ctr-fallback-4: #22b8cf;
+  --ctr-fallback-5: #e0847a;
+  --ctr-fallback-6: #2fb786;
+  --ctr-fallback-7: #9a8bd6;
+  --ctr-fallback-8: #e08cb8;
+
+  --ctr-fallback-1-soft: rgba(125, 153, 224, 0.18);
+  --ctr-fallback-2-soft: rgba(214, 164, 25, 0.18);
+  --ctr-fallback-3-soft: rgba(181, 123, 240, 0.18);
+  --ctr-fallback-4-soft: rgba(34, 184, 207, 0.18);
+  --ctr-fallback-5-soft: rgba(224, 132, 122, 0.18);
+  --ctr-fallback-6-soft: rgba(47, 183, 134, 0.18);
+  --ctr-fallback-7-soft: rgba(154, 139, 214, 0.18);
+  --ctr-fallback-8-soft: rgba(224, 140, 184, 0.18);
+}
+
+:root[data-theme="light"] {
+  --docker-blue: #1d63ed;
+  --docker-blue-soft: rgba(29, 99, 237, 0.1);
+
+  --ctr-fallback-1: #4d6bb3;
+  --ctr-fallback-2: #a1780a;
+  --ctr-fallback-3: #8b2fc9;
+  --ctr-fallback-4: #0f8fa8;
+  --ctr-fallback-5: #b3554d;
+  --ctr-fallback-6: #1f9d73;
+  --ctr-fallback-7: #6d5bb0;
+  --ctr-fallback-8: #b0568a;
+
+  --ctr-fallback-1-soft: rgba(77, 107, 179, 0.14);
+  --ctr-fallback-2-soft: rgba(161, 120, 10, 0.14);
+  --ctr-fallback-3-soft: rgba(139, 47, 201, 0.12);
+  --ctr-fallback-4-soft: rgba(15, 143, 168, 0.14);
+  --ctr-fallback-5-soft: rgba(179, 85, 77, 0.14);
+  --ctr-fallback-6-soft: rgba(31, 157, 115, 0.14);
+  --ctr-fallback-7-soft: rgba(109, 91, 176, 0.14);
+  --ctr-fallback-8-soft: rgba(176, 86, 138, 0.14);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Layout helpers specific to the Containers page                          */
+/* ---------------------------------------------------------------------- */
+
+.ctr-stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  min-width: 96px;
+}
+
+.ctr-stat-tile-value {
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.ctr-stat-tile-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.ctr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  white-space: nowrap;
+}
+
+.ctr-chip[data-active="true"] {
+  color: var(--docker-blue);
+  border-color: var(--docker-blue);
+  background: var(--docker-blue-soft);
+}
+
+.ctr-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--text-faint);
+}
+
+.ctr-chip[data-active="true"] .ctr-chip-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--docker-blue);
+}
+
+.ctr-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.ctr-compose-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--docker-blue-soft);
+  color: var(--docker-blue);
+}
+
+.ctr-k8s-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--k8s-blue-soft, rgba(50, 108, 229, 0.1));
+  color: var(--k8s-blue, #326ce5);
+}

@@ -129,6 +129,9 @@ describe("groupByComposeProject", () => {
       runningFor: "",
       composeProject: null,
       composeService: null,
+      composeWorkingDir: null,
+      composeConfigFiles: [],
+      kubernetes: null,
       ...overrides,
     };
   }
@@ -162,5 +165,19 @@ describe("groupByComposeProject", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].project).toBeNull();
     expect(groups[0].containers).toHaveLength(2);
+  });
+
+  it("excludes Kubernetes-managed containers even if they carry a compose label", () => {
+    const containers = [
+      makeContainer({ id: "1", composeProject: "myapp" }),
+      makeContainer({
+        id: "2",
+        composeProject: "myapp",
+        kubernetes: { namespace: "default", pod: "api-abcde", container: "api" },
+      }),
+    ];
+    const groups = groupByComposeProject(containers);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].containers.map((c) => c.id)).toEqual(["1"]);
   });
 });

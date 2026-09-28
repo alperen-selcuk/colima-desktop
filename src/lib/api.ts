@@ -2,6 +2,11 @@
 // command names, camelCase arg names, and event names (`colima-op-log`, `log-line`,
 // `log-end`, `profiles-changed`).
 import type {
+  ComposeActionKind,
+  ComposeInfo,
+  ComposePreview,
+  ComposeProject,
+  ComposePullPolicy,
   Container,
   ContainerStats,
   EnvInfo,
@@ -135,6 +140,15 @@ async function mockInvoke<T>(
       return [] as unknown as T;
     case "list_containers":
       return mock.mockContainers as unknown as T;
+    case "compose_info":
+      return mock.mockComposeInfo as unknown as T;
+    case "compose_projects":
+      return mock.mockComposeProjects as unknown as T;
+    case "compose_preview":
+      return mock.mockComposePreview(args?.files as string[], args?.projectName as string | null) as unknown as T;
+    case "compose_up":
+    case "compose_action":
+      return undefined as unknown as T;
     case "container_action":
       return undefined as unknown as T;
     case "container_inspect":
@@ -195,8 +209,9 @@ async function mockInvoke<T>(
     case "repair_host_kubeconfig":
       return mock.mockRepairHostKubeconfig() as unknown as T;
     case "start_log_stream":
-      return "mock-stream-id" as unknown as T;
+      return mockStartLogStream(args?.target as LogTarget) as unknown as T;
     case "stop_log_stream":
+      mockStopLogStream(args?.streamId as string);
       return undefined as unknown as T;
     case "terminal_open":
       return mockTerminalOpen(args?.target as TerminalTarget) as unknown as T;
@@ -267,6 +282,52 @@ function mockTerminalWrite(sessionId: string, data: string): void {
       mockEmit<TerminalOutput>("terminal-output", { sessionId, data: toBase64(out) });
     }
   }, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Dev-mode mock log streams: containers/pods emit nothing today (no backend
+// process to tail), but a compose target (§6.7) gets a handful of fake
+// interleaved "<service>-1 | ..." lines — real `compose logs -f` prefixes
+// each line with its service/container name the same way — so the
+// Containers page's compose "Logs" tab has something to show in `npm run dev`.
+// ---------------------------------------------------------------------------
+
+const mockLogStreams = new Set<string>();
+let mockStreamCounter = 0;
+
+const COMPOSE_MOCK_LINES: { service: string; line: string }[] = [
+  { service: "web-1", line: "Listening on port 80" },
+  { service: "db-1", line: "database system is ready to accept connections" },
+  { service: "web-1", line: "GET / 200 12ms" },
+  { service: "app-1", line: "Connected to db:5432" },
+  { service: "db-1", line: "checkpoint starting: time" },
+  { service: "web-1", line: "GET /health 200 1ms" },
+  { service: "app-1", line: "Worker ready" },
+];
+
+function mockStartLogStream(target: LogTarget): string {
+  const streamId = `mock-stream-${++mockStreamCounter}`;
+  mockLogStreams.add(streamId);
+  if (target.kind === "compose") {
+    COMPOSE_MOCK_LINES.forEach((entry, i) => {
+      setTimeout(
+        () => {
+          if (!mockLogStreams.has(streamId)) return;
+          mockEmit<LogEvent>("log-line", {
+            streamId,
+            line: `${entry.service}  | ${entry.line}`,
+            stream: "stdout",
+          });
+        },
+        60 + i * 90,
+      );
+    });
+  }
+  return streamId;
+}
+
+function mockStopLogStream(streamId: string): void {
+  mockLogStreams.delete(streamId);
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +593,55 @@ export function startLogStream(profile: string, target: LogTarget): Promise<stri
 
 export function stopLogStream(streamId: string): Promise<void> {
   return invoke<void>("stop_log_stream", { streamId });
+}
+
+// ---- §6.7: Docker Compose ----
+
+export function composeInfo(profile: string): Promise<ComposeInfo> {
+  return invoke<ComposeInfo>("compose_info", { profile });
+}
+
+export function composeProjects(profile: string): Promise<ComposeProject[]> {
+  return invoke<ComposeProject[]>("compose_projects", { profile });
+}
+
+/** Validates the given compose file(s) and returns the resolved service
+ * list (image, whether it's built locally, published ports) without
+ * starting anything. Errors from a malformed compose file are returned
+ * verbatim (noise stripped) by the backend, not thrown, when possible;
+ * callers should still be ready to catch a rejected promise for hard
+ * failures (e.g. missing binary, files not found). */
+export function composePreview(
+  profile: string,
+  files: string[],
+  projectName: string | null,
+): Promise<ComposePreview> {
+  return invoke<ComposePreview>("compose_preview", { profile, files, projectName });
+}
+
+/** `compose up -d`; streams into `colima-op-log` with op `"compose-up"` —
+ * same event the Output dock tab already renders. */
+export function composeUp(
+  profile: string,
+  files: string[],
+  projectName: string | null,
+  build: boolean,
+  pull: ComposePullPolicy,
+  forceRecreate: boolean,
+): Promise<void> {
+  return invoke<void>("compose_up", { profile, files, projectName, build, pull, forceRecreate });
+}
+
+/** Stop / start / restart / down / pull an existing compose project.
+ * `removeVolumes` only matters for `down` (adds `-v`). */
+export function composeAction(
+  profile: string,
+  project: string,
+  action: ComposeActionKind,
+  configFiles: string[],
+  removeVolumes: boolean,
+): Promise<void> {
+  return invoke<void>("compose_action", { profile, project, action, configFiles, removeVolumes });
 }
 
 export function terminalOpen(

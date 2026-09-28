@@ -5,6 +5,7 @@ import * as api from "../lib/api";
 import type { Container, ContainerStats } from "../lib/types";
 import { LogViewer } from "./LogViewer";
 import { useDock } from "../lib/useDock";
+import { ImageIcon } from "./containers/ImageIcon";
 
 type Tab = "logs" | "inspect" | "stats";
 
@@ -35,12 +36,15 @@ export function ContainerDetail({ profile, container, stats, onClose }: Containe
       style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
     >
       <div className="flex items-center justify-between border-b px-3 py-2.5" style={{ borderColor: "var(--border)" }}>
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold" style={{ color: "var(--text)" }}>
-            {container.names}
-          </div>
-          <div className="truncate font-mono-app text-[11px]" style={{ color: "var(--text-faint)" }}>
-            {container.id.slice(0, 12)}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <ImageIcon image={container.image} size={26} />
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold" style={{ color: "var(--text)" }}>
+              {container.names}
+            </div>
+            <div className="truncate font-mono-app text-[11px]" style={{ color: "var(--text-faint)" }}>
+              {container.id.slice(0, 12)}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">

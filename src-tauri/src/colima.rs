@@ -381,6 +381,7 @@ pub async fn start_profile(
     let _guard = state.try_lock_profile(&profile)?;
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    state.invalidate_compose_info(&profile);
 
     let args = start_args(&profile, &options);
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -388,6 +389,7 @@ pub async fn start_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -411,6 +413,7 @@ pub async fn stop_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -429,6 +432,7 @@ pub async fn restart_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
 }
@@ -447,6 +451,7 @@ pub async fn delete_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
 }

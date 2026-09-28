@@ -4,6 +4,7 @@
 //! the stream's exit as `log-end`.
 
 use crate::colima::resolve_docker_socket;
+use crate::compose;
 use crate::kubeconfig;
 use crate::state::AppState;
 use crate::validate::{kube_context, validate_profile_name};
@@ -26,6 +27,8 @@ pub enum LogTarget {
         container: Option<String>,
         tail: u32,
     },
+    #[serde(rename_all = "camelCase")]
+    Compose { project: String, tail: u32 },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,6 +110,18 @@ async fn build_log_command(
                 args.push(c.clone());
             }
             Ok(("kubectl".to_string(), args))
+        }
+        LogTarget::Compose { project, tail } => {
+            let socket = resolve_docker_socket(state, profile).await;
+            let info = compose::resolve_compose_info(state, profile, &socket).await;
+            let mode = info
+                .mode
+                .ok_or_else(|| info.hint.unwrap_or_else(|| "Docker Compose is not available".to_string()))?;
+            // No specific compose files: `compose -p <project> logs` finds
+            // the project's containers by label, same as `compose_action`
+            // does when `configFiles` is empty.
+            let (bin, args) = compose::build_logs_args(mode, &socket, project, &[], *tail);
+            Ok((bin, args))
         }
     }
 }

@@ -18,6 +18,8 @@ pub struct AppState {
     pub pty_sessions: Mutex<HashMap<String, PtySession>>,
     /// Per-session "fresh" flags for the app-managed kubeconfig (§2.1a).
     pub kubeconfig: KubeconfigState,
+    /// Per-profile cached compose plugin-vs-standalone resolution (§6.7).
+    compose_mode: Mutex<HashMap<String, crate::compose::ComposeInfo>>,
 }
 
 /// 30s cache TTL for resolved docker sockets, per §2.2.
@@ -85,6 +87,23 @@ impl AppState {
     /// lifecycle ops that may change it, e.g. start/stop/delete).
     pub fn invalidate_docker_socket(&self, profile: &str) {
         self.docker_sockets.lock().unwrap().remove(profile);
+    }
+
+    /// Return the cached compose plugin-vs-standalone resolution for
+    /// `profile`, if any (§6.7: resolved once per profile per app session).
+    pub fn cached_compose_info(&self, profile: &str) -> Option<crate::compose::ComposeInfo> {
+        self.compose_mode.lock().unwrap().get(profile).cloned()
+    }
+
+    /// Store the resolved compose mode for `profile`.
+    pub fn cache_compose_info(&self, profile: &str, info: crate::compose::ComposeInfo) {
+        self.compose_mode.lock().unwrap().insert(profile.to_string(), info);
+    }
+
+    /// Invalidate the cached compose mode for `profile` (e.g. after the
+    /// machine restarts, in case the docker socket changed runtime).
+    pub fn invalidate_compose_info(&self, profile: &str) {
+        self.compose_mode.lock().unwrap().remove(profile);
     }
 }
 

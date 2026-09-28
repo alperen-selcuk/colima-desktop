@@ -4,6 +4,7 @@
 //! project root for the full contract this crate implements.
 
 mod colima;
+mod compose;
 mod config_file;
 mod docker;
 mod env;
@@ -57,6 +58,11 @@ pub fn run() {
             docker::list_volumes,
             docker::remove_volume,
             docker::prune,
+            compose::compose_info,
+            compose::compose_projects,
+            compose::compose_preview,
+            compose::compose_up,
+            compose::compose_action,
             k8s::k8s_namespaces,
             k8s::k8s_pods,
             k8s::k8s_deployments,

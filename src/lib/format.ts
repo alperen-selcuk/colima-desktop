@@ -71,12 +71,20 @@ export interface ComposeGroup {
  * Group containers by their compose project label, preserving first-seen
  * order of both groups and containers within a group. Containers without a
  * compose project are collected into a single `project: null` group.
+ *
+ * Kubernetes-managed containers (§6.7, `container.kubernetes != null`) are
+ * always excluded from compose grouping — k3s never sets compose labels on
+ * its pod containers, but this keeps the two features' groupings from ever
+ * mixing even if that ever changes upstream. Callers are expected to have
+ * already applied the "hide Kubernetes containers" filter before calling
+ * this, so this is a belt-and-suspenders guard, not the primary filter.
  */
 export function groupByComposeProject(containers: Container[]): ComposeGroup[] {
   const order: (string | null)[] = [];
   const groups = new Map<string | null, Container[]>();
 
   for (const c of containers) {
+    if (c.kubernetes != null) continue;
     const key = c.composeProject ?? null;
     if (!groups.has(key)) {
       groups.set(key, []);

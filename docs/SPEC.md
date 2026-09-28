@@ -403,6 +403,45 @@ UI (Kubernetes page redesign):
 - Ingresses: hosts as clickable links (http/https by `tls`), rules table in the detail drawer.
 - ConfigMaps: keys as chips; detail drawer shows data (values are not secret).
 
+### 6.7 v0.1.3: Containers redesign, hide Kubernetes containers, Docker Compose
+
+**Kubernetes containers.** With the docker runtime, k3s runs every pod container (and `k8s_POD_…` sandboxes) as a
+Docker container labelled `io.kubernetes.pod.namespace` (verified: 41 of 41 containers on a test machine, most of
+them exited leftovers that remain even when Kubernetes is disabled). `Container` gains
+`kubernetes: { namespace: string, pod: string, container: string | null } | null` (from labels
+`io.kubernetes.pod.namespace`, `io.kubernetes.pod.name`, `io.kubernetes.container.name`). The Containers page hides
+these by default; a filter menu toggle "Show Kubernetes containers (N)" (persisted, default off) reveals them.
+Counts, stat tiles and prune hints exclude them unless shown.
+
+**Docker Compose.** Resolve the compose binary once per profile: `docker -H <socket> compose version` (plugin), else
+standalone `docker-compose version` run with `DOCKER_HOST=<socket>` in its env. If neither exists → `available:false`
+with an install hint (`brew install docker-compose` + the `cliPluginsExtraDirs` note, or distro package on Linux).
+All compose calls use the same socket rules as §2.2. `Container` gains `composeWorkingDir: string | null` and
+`composeConfigFiles: string[]` (labels `com.docker.compose.project.working_dir`, `…config_files`).
+| Command | Args | Returns | Implementation |
+|---|---|---|---|
+| `compose_info` | `profile` | `{ available: boolean, version: string \| null, mode: "plugin" \| "standalone" \| null, hint: string \| null }` | as above |
+| `compose_projects` | `profile` | `ComposeProject[]` = `{ name, status /* "running(2), exited(1)" */, configFiles: string[] }` | `compose ls -a --format json` |
+| `compose_preview` | `profile, files: string[], projectName: string \| null` | `{ projectName: string, services: { name, image: string \| null, build: boolean, ports: string[] }[], warnings: string[] }` | `compose -f … [-p] config --format json` (validates the file; errors returned verbatim, noise stripped) |
+| `compose_up` | `profile, files: string[], projectName: string \| null, build: boolean, pull: "missing" \| "always", forceRecreate: boolean` | `void` | `compose -f … [-p name] up -d [--build] --pull <p> [--force-recreate]`, working dir = first file's directory; streamed as `colima-op-log` op `"compose-up"`; lifecycle-style busy lock key `compose:<project>` |
+| `compose_action` | `profile, project, action: "stop" \| "start" \| "restart" \| "down" \| "pull", configFiles: string[], removeVolumes: boolean` | `void` | `compose -p <project> [-f files] <action>` (`down` adds `--remove-orphans` and `-v` when removeVolumes); streamed as op `"compose-<action>"` |
+Files must exist, be absolute, and end in `.yml`/`.yaml`; project names are validated like Compose (`^[a-z0-9][a-z0-9_-]*$`).
+Log streaming gains target `{ kind: "compose", project, tail }` → `compose -p <project> logs -f --tail N --no-color`.
+Homebrew cask adds `depends_on formula: "docker-compose"`.
+
+**UI.** Containers page header: Docker whale mark + "Docker Engine" + profile/socket + compose status; stat tiles
+(Running, Stopped, Compose projects, total CPU %, total memory); filter chips (All / Running / Stopped / Compose);
+search; buttons **Run container** and **Compose up…** (dialog: file picker filtered to yml/yaml via
+`@tauri-apps/plugin-dialog`, recent files (last 8, persisted), project name (default = directory name, lowercased),
+options Build / Pull always / Force recreate, service preview from `compose_preview`, then Up → Output dock tab).
+Compose project groups show a compose badge, aggregate state, and actions Up (re-up with stored files) / Restart /
+Stop / Start / Down (confirm, "also remove volumes" checkbox) / Pull / Logs (aggregate stream in the detail panel).
+Every container row shows an image avatar: the brand icon of well-known images via `simple-icons` (CC0; e.g. nginx,
+redis, postgresql, mysql, mariadb, mongodb, node.js, python, go, alpine linux, ubuntu, debian, rabbitmq,
+elasticsearch, grafana, prometheus, traefik, apache kafka, minio, docker) matched from the image repository name;
+otherwise a generic container glyph tinted by a stable hash of the image name. Status pills, port chips (clickable),
+CPU/memory mini bars from stats. Both themes; keep density.
+
 Logo: `public/logo.svg` (transparent background, brand green, works on dark & light) is used in the sidebar header and README.
 
 Toasts for errors/success (simple self-made toast stack). Confirm dialogs for destructive ops. Keyboard: `Cmd/Ctrl+K` focuses search on list pages.

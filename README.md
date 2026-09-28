@@ -178,6 +178,8 @@ logo from [kubernetes/kubernetes](https://github.com/kubernetes/kubernetes/blob/
 © The Kubernetes Authors, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). See
 `public/k8s-icons/NOTICE` for full attribution.
 
+The Containers page's image brand icons use [Simple Icons](https://simpleicons.org/) ([CC0](https://creativecommons.org/publicdomain/zero/1.0/)); all trademarks belong to their respective owners.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

@@ -71,6 +71,13 @@ export interface StartOptions {
   mounts?: string[];
 }
 
+export interface ContainerKubernetesInfo {
+  // from labels io.kubernetes.pod.namespace / .pod.name / .container.name
+  namespace: string;
+  pod: string;
+  container: string | null;
+}
+
 export interface Container {
   // from `docker ps -a --no-trunc --format '{{json .}}'`
   id: string;
@@ -85,6 +92,10 @@ export interface Container {
   runningFor: string;
   composeProject: string | null; // label com.docker.compose.project
   composeService: string | null; // label com.docker.compose.service
+  // §6.7
+  composeWorkingDir: string | null; // label com.docker.compose.project.working_dir
+  composeConfigFiles: string[]; // label com.docker.compose.project.config_files, split on comma
+  kubernetes: ContainerKubernetesInfo | null; // non-null for k3s-managed pod containers/sandboxes
 }
 
 export interface ContainerStats {
@@ -317,7 +328,8 @@ export type PruneTarget = "containers" | "images" | "volumes" | "system";
 
 export type LogTarget =
   | { kind: "container"; id: string; tail: number }
-  | { kind: "pod"; namespace: string; pod: string; container: string | null; tail: number };
+  | { kind: "pod"; namespace: string; pod: string; container: string | null; tail: number }
+  | { kind: "compose"; project: string; tail: number };
 
 export type TerminalTarget =
   | { kind: "host" }
@@ -368,3 +380,45 @@ export interface HostKubeconfigHealth {
 export interface RepairResult {
   backupPath: string;
 }
+
+// ---- §6.7: Docker Compose ----
+
+export type ComposeMode = "plugin" | "standalone";
+
+export interface ComposeInfo {
+  available: boolean;
+  version: string | null;
+  mode: ComposeMode | null;
+  hint: string | null; // install hint shown inline when `available` is false
+}
+
+export interface ComposeProject {
+  name: string;
+  status: string; // e.g. "running(2), exited(1)"
+  configFiles: string[];
+}
+
+export interface ComposeServicePreview {
+  name: string;
+  image: string | null;
+  build: boolean;
+  ports: string[];
+}
+
+export interface ComposePreview {
+  projectName: string;
+  services: ComposeServicePreview[];
+  warnings: string[];
+}
+
+export type ComposePullPolicy = "missing" | "always";
+
+export interface ComposeUpOptions {
+  files: string[];
+  projectName: string | null;
+  build: boolean;
+  pull: ComposePullPolicy;
+  forceRecreate: boolean;
+}
+
+export type ComposeActionKind = "stop" | "start" | "restart" | "down" | "pull";

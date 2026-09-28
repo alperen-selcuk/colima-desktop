@@ -2,6 +2,9 @@
 // (i.e. outside the Tauri webview, where `__TAURI_INTERNALS__` is absent).
 // Lets every page render with representative sample data for visual QA.
 import type {
+  ComposeInfo,
+  ComposePreview,
+  ComposeProject,
   ConfigIssue,
   Container,
   ContainerStats,
@@ -130,6 +133,9 @@ export const mockContainers: Container[] = [
     runningFor: "3 hours",
     composeProject: "myapp",
     composeService: "frontend",
+    composeWorkingDir: "/Users/dev/projects/myapp",
+    composeConfigFiles: ["/Users/dev/projects/myapp/docker-compose.yml"],
+    kubernetes: null,
   },
   {
     id: "b2c3d4e5f6a1",
@@ -144,6 +150,9 @@ export const mockContainers: Container[] = [
     runningFor: "3 hours",
     composeProject: "myapp",
     composeService: "api",
+    composeWorkingDir: "/Users/dev/projects/myapp",
+    composeConfigFiles: ["/Users/dev/projects/myapp/docker-compose.yml"],
+    kubernetes: null,
   },
   {
     id: "c3d4e5f6a1b2",
@@ -158,6 +167,9 @@ export const mockContainers: Container[] = [
     runningFor: "3 hours",
     composeProject: "myapp",
     composeService: "db",
+    composeWorkingDir: "/Users/dev/projects/myapp",
+    composeConfigFiles: ["/Users/dev/projects/myapp/docker-compose.yml"],
+    kubernetes: null,
   },
   {
     id: "d4e5f6a1b2c3",
@@ -172,6 +184,175 @@ export const mockContainers: Container[] = [
     runningFor: "",
     composeProject: null,
     composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: null,
+  },
+  // Standalone (non-compose) containers with mixed known/unknown images, to
+  // exercise the brand-icon lookup and the generic hashed-tile fallback.
+  {
+    id: "e5f6a1b2c3d4",
+    names: "metrics-grafana",
+    image: "grafana/grafana:11.1.0",
+    command: "\"/run.sh\"",
+    state: "running",
+    status: "Up 6 hours",
+    ports: "0.0.0.0:3001->3000/tcp",
+    portLinks: [{ hostPort: 3001, containerPort: 3000, protocol: "tcp", url: "http://localhost:3001" }],
+    createdAt: isoAgo(6 * 3600_000),
+    runningFor: "6 hours",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: null,
+  },
+  {
+    id: "f6a1b2c3d4e5",
+    names: "internal-billing-svc",
+    image: "registry.internal.example.com/platform/billing-svc:2.3.0",
+    command: "\"./billing-svc\"",
+    state: "running",
+    status: "Up 12 hours",
+    ports: "0.0.0.0:9090->9090/tcp",
+    portLinks: [{ hostPort: 9090, containerPort: 9090, protocol: "tcp", url: "http://localhost:9090" }],
+    createdAt: isoAgo(12 * 3600_000),
+    runningFor: "12 hours",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: null,
+  },
+  // Second compose project ("analytics"): mixes a well-known image (mongo)
+  // with an unrecognized custom one, and is only partially running so the
+  // group's aggregate status shows a mix (e.g. "running(1), exited(1)").
+  {
+    id: "a2b3c4d5e6f7",
+    names: "analytics_worker_1",
+    image: "ghcr.io/acme/analytics-worker:0.9.1",
+    command: "\"python worker.py\"",
+    state: "running",
+    status: "Up 40 minutes",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(40 * 60_000),
+    runningFor: "40 minutes",
+    composeProject: "analytics",
+    composeService: "worker",
+    composeWorkingDir: "/Users/dev/projects/analytics",
+    composeConfigFiles: ["/Users/dev/projects/analytics/docker-compose.yaml"],
+    kubernetes: null,
+  },
+  {
+    id: "b3c4d5e6f7a8",
+    names: "analytics_mongo_1",
+    image: "mongo:7",
+    command: "\"docker-entrypoint.s…\"",
+    state: "exited",
+    status: "Exited (0) 3 hours ago",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(3 * 3600_000),
+    runningFor: "",
+    composeProject: "analytics",
+    composeService: "mongo",
+    composeWorkingDir: "/Users/dev/projects/analytics",
+    composeConfigFiles: ["/Users/dev/projects/analytics/docker-compose.yaml"],
+    kubernetes: null,
+  },
+  // Kubernetes-managed containers (§6.7): k3s runs every pod container (plus
+  // `k8s_POD_...` sandboxes) as a plain docker container labelled
+  // io.kubernetes.pod.*. These must be hidden from the Containers page by
+  // default (and excluded from counts/tiles/compose grouping) — the filter
+  // menu's "Show Kubernetes containers (N)" toggle reveals them.
+  {
+    id: "c4d5e6f7a8b9",
+    names: "k8s_POD_api-6f8b9c7d-abcde_default_a1b2c3d4-0000-0000-0000-000000000001_0",
+    image: "registry.k8s.io/pause:3.9",
+    command: "\"/pause\"",
+    state: "running",
+    status: "Up 2 hours",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(2 * 3600_000),
+    runningFor: "2 hours",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: { namespace: "default", pod: "api-6f8b9c7d-abcde", container: null },
+  },
+  {
+    id: "d5e6f7a8b9c0",
+    names: "k8s_api_api-6f8b9c7d-abcde_default_a1b2c3d4-0000-0000-0000-000000000001_0",
+    image: "myapp/api:1.4.2",
+    command: "\"node server.js\"",
+    state: "running",
+    status: "Up 2 hours",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(2 * 3600_000),
+    runningFor: "2 hours",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: { namespace: "default", pod: "api-6f8b9c7d-abcde", container: "api" },
+  },
+  {
+    id: "e6f7a8b9c0d1",
+    names: "k8s_POD_coredns-6799fbcd5-klmno_kube-system_b2c3d4e5-0000-0000-0000-000000000002_0",
+    image: "registry.k8s.io/pause:3.9",
+    command: "\"/pause\"",
+    state: "running",
+    status: "Up 5 days",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(5 * 86400_000),
+    runningFor: "5 days",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: { namespace: "kube-system", pod: "coredns-6799fbcd5-klmno", container: null },
+  },
+  {
+    id: "f7a8b9c0d1e2",
+    names: "k8s_coredns_coredns-6799fbcd5-klmno_kube-system_b2c3d4e5-0000-0000-0000-000000000002_0",
+    image: "rancher/mirrored-coredns-coredns:1.11.1",
+    command: "\"/coredns\"",
+    state: "running",
+    status: "Up 5 days",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(5 * 86400_000),
+    runningFor: "5 days",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: { namespace: "kube-system", pod: "coredns-6799fbcd5-klmno", container: "coredns" },
+  },
+  // A leftover, exited k8s sandbox — the motivating bug report: these must
+  // NOT show up as "stopped containers" when Kubernetes is off, and stay
+  // hidden by default even when it's on.
+  {
+    id: "a8b9c0d1e2f3",
+    names: "k8s_POD_worker-5d7c6b8f-fghij_default_c3d4e5f6-0000-0000-0000-000000000003_0",
+    image: "registry.k8s.io/pause:3.9",
+    command: "\"/pause\"",
+    state: "exited",
+    status: "Exited (0) 1 day ago",
+    ports: "",
+    portLinks: [],
+    createdAt: isoAgo(1 * 86400_000),
+    runningFor: "",
+    composeProject: null,
+    composeService: null,
+    composeWorkingDir: null,
+    composeConfigFiles: [],
+    kubernetes: { namespace: "default", pod: "worker-5d7c6b8f-fghij", container: null },
   },
 ];
 
@@ -179,6 +360,13 @@ export const mockContainerStats: ContainerStats[] = [
   { id: "a1b2c3d4e5f6", name: "web_frontend_1", cpuPerc: "0.42%", memUsage: "12.4MiB / 3.83GiB", memPerc: "0.32%", netIO: "1.2kB / 0B", blockIO: "0B / 0B", pids: "3" },
   { id: "b2c3d4e5f6a1", name: "web_api_1", cpuPerc: "1.85%", memUsage: "84.1MiB / 3.83GiB", memPerc: "2.14%", netIO: "4.5kB / 2.1kB", blockIO: "0B / 4.1kB", pids: "11" },
   { id: "c3d4e5f6a1b2", name: "web_db_1", cpuPerc: "0.61%", memUsage: "45.2MiB / 3.83GiB", memPerc: "1.15%", netIO: "890B / 640B", blockIO: "12.3MB / 8.1MB", pids: "8" },
+  { id: "e5f6a1b2c3d4", name: "metrics-grafana", cpuPerc: "2.10%", memUsage: "128MiB / 3.83GiB", memPerc: "3.26%", netIO: "8.4kB / 3.1kB", blockIO: "4.2MB / 0B", pids: "14" },
+  { id: "f6a1b2c3d4e5", name: "internal-billing-svc", cpuPerc: "0.95%", memUsage: "56.3MiB / 3.83GiB", memPerc: "1.44%", netIO: "2.1kB / 1.4kB", blockIO: "0B / 0B", pids: "6" },
+  { id: "a2b3c4d5e6f7", name: "analytics_worker_1", cpuPerc: "12.4%", memUsage: "210MiB / 3.83GiB", memPerc: "5.35%", netIO: "620B / 0B", blockIO: "0B / 0B", pids: "5" },
+  { id: "c4d5e6f7a8b9", name: "k8s_POD_api-…", cpuPerc: "0.00%", memUsage: "0.4MiB / 3.83GiB", memPerc: "0.01%", netIO: "0B / 0B", blockIO: "0B / 0B", pids: "1" },
+  { id: "d5e6f7a8b9c0", name: "k8s_api_api-…", cpuPerc: "0.55%", memUsage: "38.2MiB / 3.83GiB", memPerc: "0.97%", netIO: "1.1kB / 640B", blockIO: "0B / 0B", pids: "9" },
+  { id: "e6f7a8b9c0d1", name: "k8s_POD_coredns-…", cpuPerc: "0.00%", memUsage: "0.4MiB / 3.83GiB", memPerc: "0.01%", netIO: "0B / 0B", blockIO: "0B / 0B", pids: "1" },
+  { id: "f7a8b9c0d1e2", name: "k8s_coredns_coredns-…", cpuPerc: "0.31%", memUsage: "18.9MiB / 3.83GiB", memPerc: "0.48%", netIO: "540B / 320B", blockIO: "0B / 0B", pids: "5" },
 ];
 
 export const mockImages: Image[] = [
@@ -453,4 +641,36 @@ export function mockHostKubeconfigHealth(profile: string): HostKubeconfigHealth 
 
 export function mockRepairHostKubeconfig(): RepairResult {
   return { backupPath: "~/.kube/config.colima-desktop-bak-1758912345" };
+}
+
+// ---- §6.7: Docker Compose ----
+
+export const mockComposeInfo: ComposeInfo = {
+  available: true,
+  version: "v2.29.1",
+  mode: "plugin",
+  hint: null,
+};
+
+export const mockComposeProjects: ComposeProject[] = [
+  { name: "myapp", status: "running(3)", configFiles: ["/Users/dev/projects/myapp/docker-compose.yml"] },
+  { name: "analytics", status: "running(1), exited(1)", configFiles: ["/Users/dev/projects/analytics/docker-compose.yaml"] },
+];
+
+/** Mock for `compose_preview`: derives a plausible service list from the
+ * chosen file's directory name so the Compose Up dialog's live preview has
+ * something representative to show without a real compose file on disk. */
+export function mockComposePreview(files: string[], projectName: string | null): ComposePreview {
+  const file = files?.[0] ?? "/Users/dev/projects/myapp/docker-compose.yml";
+  const dir = file.split("/").filter(Boolean).slice(-2, -1)[0] ?? "app";
+  const project = projectName || dir.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[^a-z0-9]+/, "") || "app";
+  return {
+    projectName: project,
+    services: [
+      { name: "web", image: "nginx:latest", build: false, ports: ["8080:80"] },
+      { name: "app", image: null, build: true, ports: ["3000:3000"] },
+      { name: "db", image: "postgres:16", build: false, ports: ["5432:5432"] },
+    ],
+    warnings: [],
+  };
 }
