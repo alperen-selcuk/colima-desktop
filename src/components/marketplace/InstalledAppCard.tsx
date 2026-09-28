@@ -50,7 +50,7 @@ export function InstalledAppCard({ app, item, onCredentials, onAction, onUninsta
   return (
     <div className="mkt-card" style={{ cursor: "default" }}>
       <div className="flex items-start justify-between gap-2">
-        <CatalogIcon icon={app.icon} category={category} size={32} />
+        <CatalogIcon icon={app.icon} category={category} size={44} />
         <div className="relative flex-shrink-0">
           <Button variant="ghost" size="sm" onClick={() => setMenuOpen((v) => !v)} title="Actions">
             <MoreHorizontal size={13} />

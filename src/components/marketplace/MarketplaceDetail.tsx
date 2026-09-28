@@ -34,7 +34,7 @@ export function MarketplaceDetail({ item, installed, onClose, onInstall }: Marke
     >
       <div className="flex items-start justify-between border-b px-3 py-3" style={{ borderColor: "var(--border)" }}>
         <div className="flex min-w-0 items-start gap-2.5">
-          <CatalogIcon icon={item.icon} category={item.category} size={32} />
+          <CatalogIcon icon={item.icon} category={item.category} size={56} />
           <div className="min-w-0">
             <div className="truncate text-[13.5px] font-semibold" style={{ color: "var(--text)" }}>
               {item.name}

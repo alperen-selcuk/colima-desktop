@@ -148,3 +148,40 @@ export function fallbackTileVar(image: string): string {
   const idx = stableHash(image || "unknown") % FALLBACK_TILE_VARS.length;
   return FALLBACK_TILE_VARS[idx];
 }
+
+/** Raw hex for each `FALLBACK_TILE_VARS` entry, one map per resolved theme,
+ * mirroring the literal values in `src/styles/containers.css`'s `:root`
+ * (light) and `[data-theme="dark"]` blocks. CSS custom properties can't be
+ * read synchronously without a DOM round-trip, and `ImageIcon` needs the
+ * actual hex to run the WCAG contrast check in `resolveIconTile` — so the
+ * two are kept in sync here rather than reading `getComputedStyle`. */
+export const FALLBACK_TILE_HEX: Record<"light" | "dark", Record<string, string>> = {
+  light: {
+    "--ctr-fallback-1": "#4d6bb3",
+    "--ctr-fallback-2": "#a1780a",
+    "--ctr-fallback-3": "#8b2fc9",
+    "--ctr-fallback-4": "#0f8fa8",
+    "--ctr-fallback-5": "#b3554d",
+    "--ctr-fallback-6": "#1f9d73",
+    "--ctr-fallback-7": "#6d5bb0",
+    "--ctr-fallback-8": "#b0568a",
+  },
+  dark: {
+    "--ctr-fallback-1": "#7d99e0",
+    "--ctr-fallback-2": "#d6a419",
+    "--ctr-fallback-3": "#b57bf0",
+    "--ctr-fallback-4": "#22b8cf",
+    "--ctr-fallback-5": "#e0847a",
+    "--ctr-fallback-6": "#2fb786",
+    "--ctr-fallback-7": "#9a8bd6",
+    "--ctr-fallback-8": "#e08cb8",
+  },
+};
+
+/** Picks the raw hex (not the CSS var) for an image name's fallback tile
+ * colour in the given resolved theme — the hex-typed counterpart of
+ * `fallbackTileVar`, used where a contrast computation needs a real colour
+ * (see `resolveIconTile` in `iconContrast.ts`). */
+export function fallbackTileHex(image: string, theme: "light" | "dark"): string {
+  return FALLBACK_TILE_HEX[theme][fallbackTileVar(image)];
+}

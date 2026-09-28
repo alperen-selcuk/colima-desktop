@@ -1,4 +1,6 @@
-import { fallbackTileVar, resolveImageIcon } from "../../lib/imageIcon";
+import { fallbackTileHex, resolveImageIcon } from "../../lib/imageIcon";
+import { resolveIconTile } from "../../lib/iconContrast";
+import { useTheme } from "../../lib/useTheme";
 
 interface ImageIconProps {
   image: string;
@@ -23,25 +25,30 @@ function GenericGlyph({ size, color }: { size: number; color: string }) {
 }
 
 /** Renders a container/image's brand icon (§6.7): a well-known image gets
- * its `simple-icons` mark at brand hex on a subtle tinted tile (for
- * contrast in both themes); an unrecognized image gets a generic glyph
- * tinted by a stable hash of its name, from ~8 harmonious tokens. */
+ * its `simple-icons` mark at brand hex on a tinted tile; an unrecognized
+ * image gets a generic glyph tinted by a stable hash of its name, from ~8
+ * harmonious tokens. Both paths run their hex through `resolveIconTile` so
+ * the glyph stays at or above WCAG 3:1 contrast against its own tile in
+ * whichever theme is active — several simple-icons brand colours are
+ * black/near-black and would otherwise vanish on a dark card surface. */
 export function ImageIcon({ image, size = 24 }: ImageIconProps) {
+  const { resolved: theme } = useTheme();
   const resolved = resolveImageIcon(image);
 
   if (resolved) {
     const hex = `#${resolved.icon.hex}`;
+    const tile = resolveIconTile(hex, theme);
     return (
       <span
         className="ctr-icon-tile"
-        style={{ width: size, height: size, background: `${hex}1a` }}
+        style={{ width: size, height: size, background: tile.background }}
         title={resolved.icon.title}
       >
         <svg
           width={size * 0.6}
           height={size * 0.6}
           viewBox="0 0 24 24"
-          fill={hex}
+          fill={tile.glyphColor}
           role="presentation"
           aria-hidden="true"
         >
@@ -51,14 +58,15 @@ export function ImageIcon({ image, size = 24 }: ImageIconProps) {
     );
   }
 
-  const varName = fallbackTileVar(image);
+  const fallbackHex = fallbackTileHex(image, theme);
+  const tile = resolveIconTile(fallbackHex, theme);
   return (
     <span
       className="ctr-icon-tile"
-      style={{ width: size, height: size, background: `var(${varName}-soft)` }}
+      style={{ width: size, height: size, background: tile.background }}
       title={image}
     >
-      <GenericGlyph size={size * 0.6} color={`var(${varName})`} />
+      <GenericGlyph size={size * 0.6} color={tile.glyphColor} />
     </span>
   );
 }

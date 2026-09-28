@@ -31,7 +31,7 @@ export function CatalogCard({ item, installed, selected, onClick }: CatalogCardP
       }}
     >
       <div className="flex items-start justify-between gap-2">
-        <CatalogIcon icon={item.icon} category={item.category} size={32} />
+        <CatalogIcon icon={item.icon} category={item.category} size={44} />
         {installed && <span className="mkt-badge flex-shrink-0">Installed</span>}
       </div>
 
