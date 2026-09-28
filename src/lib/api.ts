@@ -2,6 +2,7 @@
 // command names, camelCase arg names, and event names (`colima-op-log`, `log-line`,
 // `log-end`, `profiles-changed`).
 import type {
+  CatalogResponse,
   ComposeActionKind,
   ComposeInfo,
   ComposePreview,
@@ -12,6 +13,7 @@ import type {
   EnvInfo,
   HostKubeconfigHealth,
   Image,
+  InstalledApp,
   K3sVersionsResponse,
   K8sConfigMap,
   K8sDeployment,
@@ -25,9 +27,11 @@ import type {
   LogEnd,
   LogEvent,
   LogTarget,
+  MarketplacePrepareResult,
   NodeMetrics,
   OpLog,
   PodMetrics,
+  PreflightResult,
   Profile,
   ProfileConfig,
   ConfigIssue,
@@ -223,6 +227,28 @@ async function mockInvoke<T>(
     case "terminal_close":
       mockTerminalSessions.delete(args?.sessionId as string);
       return undefined as unknown as T;
+    // ---- §6.8: Marketplace ----
+    case "marketplace_catalog":
+      return mock.mockMarketplaceCatalog() as unknown as T;
+    case "marketplace_prepare":
+      return mock.mockMarketplacePrepare(args?.itemId as string) as unknown as T;
+    case "marketplace_preflight":
+      return mock.mockMarketplacePreflight(args?.itemId as string) as unknown as T;
+    case "marketplace_fix_preflight":
+      mock.mockMarketplaceFixPreflight(args?.checkId as string);
+      return undefined as unknown as T;
+    case "marketplace_install":
+      return mockMarketplaceInstall(
+        args?.profile as string,
+        args?.itemId as string,
+        args?.projectName as string,
+        args?.values as Record<string, string>,
+      ) as unknown as T;
+    case "marketplace_installed":
+      return mock.mockMarketplaceInstalled() as unknown as T;
+    case "marketplace_uninstall":
+      mock.mockMarketplaceUninstall(args?.projectName as string);
+      return undefined as unknown as T;
     default:
       throw new Error(`mock invoke: unhandled command "${cmd}"`);
   }
@@ -328,6 +354,31 @@ function mockStartLogStream(target: LogTarget): string {
 
 function mockStopLogStream(streamId: string): void {
   mockLogStreams.delete(streamId);
+}
+
+// ---------------------------------------------------------------------------
+// Dev-mode mock Marketplace install (§6.8): streams a handful of
+// `colima-op-log` lines under op "marketplace-install" so the Install
+// dialog's step indicator and the Output dock both have something to show in
+// `npm run dev`, then resolves with a fabricated `InstalledApp` built from
+// the chosen catalog item + submitted values (mirrors what the real backend
+// would return from `compose up -d` + the ready check).
+// ---------------------------------------------------------------------------
+
+const MOCK_INSTALL_STEPS = ["Writing files…", "Starting containers…", "Waiting until ready…", "Ready"];
+
+async function mockMarketplaceInstall(
+  profile: string,
+  itemId: string,
+  projectName: string,
+  values: Record<string, string>,
+): Promise<InstalledApp> {
+  const mock = await import("./mock");
+  for (let i = 0; i < MOCK_INSTALL_STEPS.length; i++) {
+    await new Promise((r) => setTimeout(r, 220));
+    mockEmit<OpLog>("colima-op-log", { profile, op: "marketplace-install", line: MOCK_INSTALL_STEPS[i] });
+  }
+  return mock.mockMarketplaceInstallResult(itemId, projectName, values);
 }
 
 // ---------------------------------------------------------------------------
@@ -642,6 +693,53 @@ export function composeAction(
   removeVolumes: boolean,
 ): Promise<void> {
   return invoke<void>("compose_action", { profile, project, action, configFiles, removeVolumes });
+}
+
+// ---- §6.8: Marketplace ----
+
+/** Fetches the catalog: remote (GitHub raw, 6h cache) with a stale-cache or
+ * built-in fallback on error — see `CatalogResponse.source`/`error`. */
+export function marketplaceCatalog(forceRefresh: boolean): Promise<CatalogResponse> {
+  return invoke<CatalogResponse>("marketplace_catalog", { forceRefresh });
+}
+
+/** Prepares an install: generates passwords, allocates free ports (default
+ * if free else next free), derives the default project name, and runs
+ * preflight. Called when the Install dialog opens for a catalog item. */
+export function marketplacePrepare(profile: string, itemId: string): Promise<MarketplacePrepareResult> {
+  return invoke<MarketplacePrepareResult>("marketplace_prepare", { profile, itemId });
+}
+
+/** Re-runs preflight only (e.g. after "Fix" or after the user edits a port). */
+export function marketplacePreflight(profile: string, itemId: string): Promise<PreflightResult[]> {
+  return invoke<PreflightResult[]>("marketplace_preflight", { profile, itemId });
+}
+
+/** Applies the fix for one fixable preflight check (e.g. raises a sysctl in
+ * the VM). Callers should re-run `marketplacePreflight` after this resolves. */
+export function marketplaceFixPreflight(profile: string, checkId: string): Promise<void> {
+  return invoke<void>("marketplace_fix_preflight", { profile, checkId });
+}
+
+/** Writes the instance files and runs `compose up -d`, streamed into
+ * `colima-op-log` under op "marketplace-install" (same event the Output dock
+ * already renders); waits for the item's `ready` check before resolving. */
+export function marketplaceInstall(
+  profile: string,
+  itemId: string,
+  projectName: string,
+  values: Record<string, string>,
+): Promise<InstalledApp> {
+  return invoke<InstalledApp>("marketplace_install", { profile, itemId, projectName, values });
+}
+
+export function marketplaceInstalled(profile: string): Promise<InstalledApp[]> {
+  return invoke<InstalledApp[]>("marketplace_installed", { profile });
+}
+
+/** `compose down [-v] --remove-orphans` then deletes the instance directory. */
+export function marketplaceUninstall(profile: string, projectName: string, removeVolumes: boolean): Promise<void> {
+  return invoke<void>("marketplace_uninstall", { profile, projectName, removeVolumes });
 }
 
 export function terminalOpen(

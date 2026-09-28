@@ -1,0 +1,43 @@
+{
+  "id": "jaeger",
+  "name": "Jaeger",
+  "description": "All-in-one Jaeger for distributed tracing: collector, query UI and in-memory storage in a single container.",
+  "category": "monitoring",
+  "tags": ["jaeger", "tracing", "opentelemetry"],
+  "icon": "jaeger",
+  "website": "https://www.jaegertracing.io",
+  "source": {
+    "name": "Jaeger official documentation (all-in-one Docker quickstart)",
+    "url": "https://www.jaegertracing.io/docs/latest/getting-started/",
+    "license": "Apache-2.0"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "JAEGER_UI_PORT", "type": "port", "label": "Jaeger UI port", "default": 16686 },
+    { "name": "JAEGER_OTLP_GRPC_PORT", "type": "port", "label": "OTLP gRPC port", "default": 4317 },
+    { "name": "JAEGER_OTLP_HTTP_PORT", "type": "port", "label": "OTLP HTTP port", "default": 4318 }
+  ],
+  "endpoints": [
+    {
+      "name": "Jaeger UI",
+      "url": "http://localhost:${JAEGER_UI_PORT}",
+      "primary": true
+    },
+    {
+      "name": "OTLP gRPC endpoint",
+      "value": "http://localhost:${JAEGER_OTLP_GRPC_PORT}"
+    },
+    {
+      "name": "OTLP HTTP endpoint",
+      "value": "http://localhost:${JAEGER_OTLP_HTTP_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${JAEGER_UI_PORT}",
+    "expectStatus": [200],
+    "timeoutSec": 60
+  },
+  "notes": "Traces are stored in memory and lost on restart — for local development only. Point your app's OpenTelemetry exporter at the OTLP endpoint."
+}

@@ -1,0 +1,36 @@
+{
+  "id": "rabbitmq",
+  "name": "RabbitMQ",
+  "description": "RabbitMQ message broker with the management plugin enabled for browsing queues, exchanges and connections.",
+  "category": "messaging",
+  "tags": ["rabbitmq", "amqp", "queue"],
+  "icon": "rabbitmq",
+  "website": "https://www.rabbitmq.com",
+  "source": {
+    "name": "Official RabbitMQ Docker image documentation",
+    "url": "https://github.com/docker-library/docs/tree/master/rabbitmq",
+    "license": "MIT"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 512,
+  "variables": [
+    { "name": "RABBITMQ_USER", "type": "string", "label": "RabbitMQ user", "default": "app" },
+    { "name": "RABBITMQ_PASSWORD", "type": "password", "label": "RabbitMQ password", "length": 20 },
+    { "name": "RABBITMQ_PORT", "type": "port", "label": "AMQP port", "default": 5672 },
+    { "name": "RABBITMQ_MGMT_PORT", "type": "port", "label": "Management UI port", "default": 15672 }
+  ],
+  "endpoints": [
+    {
+      "name": "Management UI",
+      "url": "http://localhost:${RABBITMQ_MGMT_PORT}",
+      "username": "${RABBITMQ_USER}",
+      "password": "${RABBITMQ_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Connection string",
+      "value": "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:${RABBITMQ_PORT}/"
+    }
+  ],
+  "ready": { "type": "healthy", "timeoutSec": 90 }
+}

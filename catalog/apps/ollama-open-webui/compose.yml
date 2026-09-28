@@ -1,0 +1,33 @@
+# Adapted from Open WebUI's official Docker Compose example (MIT)
+# https://github.com/open-webui/open-webui
+services:
+  ollama:
+    image: docker.io/ollama/ollama:0.12.5
+    ports:
+      - "127.0.0.1:${OLLAMA_PORT}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      # The ollama image has no curl/wget; `ollama list` talks to the local API over its own
+      # client, so it doubles as a readiness probe.
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.11.4
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=true
+    ports:
+      - "127.0.0.1:${OPEN_WEBUI_PORT}:8080"
+    volumes:
+      - open-webui-data:/app/backend/data
+
+volumes:
+  ollama-data:
+  open-webui-data:

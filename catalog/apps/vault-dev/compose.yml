@@ -1,0 +1,18 @@
+# Adapted from the official HashiCorp Vault Docker image documentation
+# https://hub.docker.com/r/hashicorp/vault
+services:
+  vault:
+    image: docker.io/hashicorp/vault:1.21.1
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TOKEN}
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_ADDR=http://127.0.0.1:8200
+    ports:
+      - "127.0.0.1:${VAULT_PORT}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

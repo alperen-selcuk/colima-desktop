@@ -1,0 +1,41 @@
+{
+  "id": "elasticsearch",
+  "name": "Elasticsearch",
+  "description": "Single-node Elasticsearch with security enabled, for local search and indexing experiments.",
+  "category": "search",
+  "tags": ["elasticsearch", "search", "elk"],
+  "icon": "elasticsearch",
+  "website": "https://www.elastic.co/elasticsearch",
+  "source": {
+    "name": "deviantony/docker-elk",
+    "url": "https://github.com/deviantony/docker-elk",
+    "license": "MIT"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 2048,
+  "variables": [
+    { "name": "ELASTIC_PASSWORD", "type": "password", "label": "elastic superuser password", "length": 24 },
+    { "name": "ES_PORT", "type": "port", "label": "Elasticsearch HTTP port", "default": 9200 }
+  ],
+  "endpoints": [
+    {
+      "name": "Elasticsearch API",
+      "url": "http://localhost:${ES_PORT}",
+      "username": "elastic",
+      "password": "${ELASTIC_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "curl example",
+      "value": "curl -u elastic:${ELASTIC_PASSWORD} http://localhost:${ES_PORT}"
+    }
+  ],
+  "preflight": [{ "type": "sysctl", "key": "vm.max_map_count", "min": 262144 }],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${ES_PORT}/_cluster/health",
+    "expectStatus": [200, 401],
+    "timeoutSec": 180
+  },
+  "notes": "Security is enabled. The built-in `elastic` superuser password is set on first boot from ELASTIC_PASSWORD."
+}

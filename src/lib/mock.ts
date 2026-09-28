@@ -2,6 +2,8 @@
 // (i.e. outside the Tauri webview, where `__TAURI_INTERNALS__` is absent).
 // Lets every page render with representative sample data for visual QA.
 import type {
+  CatalogItem,
+  CatalogResponse,
   ComposeInfo,
   ComposePreview,
   ComposeProject,
@@ -11,6 +13,7 @@ import type {
   EnvInfo,
   HostKubeconfigHealth,
   Image,
+  InstalledApp,
   K3sVersionsResponse,
   K8sConfigMap,
   K8sDeployment,
@@ -19,8 +22,10 @@ import type {
   K8sPod,
   K8sSecret,
   K8sService,
+  MarketplacePrepareResult,
   NodeMetrics,
   PodMetrics,
+  PreflightResult,
   Profile,
   ProfileConfig,
   ProfileConfigRaw,
@@ -29,6 +34,7 @@ import type {
   SecretValue,
   Volume,
 } from "./types";
+import { generatePassword, renderEndpoints } from "./marketplace";
 // The real upstream Colima default template (see src-tauri/resources/colima-default.yaml
 // for attribution), imported as raw text so `npm run dev` in a plain browser shows a
 // fully populated machine configuration editor.
@@ -787,4 +793,516 @@ export function mockComposePreview(files: string[], projectName: string | null):
     ],
     warnings: [],
   };
+}
+
+// ---------------------------------------------------------------------------
+// §6.8: Marketplace
+// ---------------------------------------------------------------------------
+
+/** ~8 representative catalog items so `npm run dev` demos search, category
+ * chips, the responsive card grid, the detail drawer's compose preview, and
+ * both the "failing-but-fixable" and "clean" preflight paths. Compose text
+ * is intentionally minimal but realistic (valid YAML the parseComposeServices
+ * helper can actually read) — not the full production compose files that
+ * belong in catalog/apps/<id>/compose.yml. */
+export const mockCatalogItems: CatalogItem[] = [
+  {
+    id: "elasticsearch-kibana",
+    name: "Elasticsearch + Kibana",
+    description: "Search, analyze and visualize logs and application data.",
+    category: "search",
+    tags: ["elk", "logs", "search"],
+    icon: "elasticsearch",
+    website: "https://www.elastic.co",
+    source: { name: "docker/awesome-compose", url: "https://github.com/docker/awesome-compose", license: "CC0-1.0" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 3072,
+    variables: [
+      { name: "ELASTIC_PASSWORD", type: "password", label: "elastic password", length: 24 },
+      { name: "ES_PORT", type: "port", label: "Elasticsearch port", default: 9200 },
+      { name: "KIBANA_PORT", type: "port", label: "Kibana port", default: 5601 },
+      { name: "KIBANA_SYSTEM_PASSWORD", type: "password", label: "kibana_system password", length: 24, hidden: true },
+    ],
+    endpoints: [
+      { name: "Kibana", url: "http://localhost:${KIBANA_PORT}", username: "elastic", password: "${ELASTIC_PASSWORD}", primary: true },
+      { name: "Elasticsearch API", url: "http://localhost:${ES_PORT}", username: "elastic", password: "${ELASTIC_PASSWORD}" },
+    ],
+    preflight: [{ type: "sysctl", key: "vm.max_map_count", min: 262144 }],
+    ready: { type: "http", url: "http://localhost:${KIBANA_PORT}/api/status", expectStatus: [200, 401], timeoutSec: 240 },
+    notes: "Elasticsearch needs a few minutes to become ready on first start.",
+    compose: `services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    environment:
+      - ELASTIC_PASSWORD=\${ELASTIC_PASSWORD}
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+    ports:
+      - "127.0.0.1:\${ES_PORT}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=\${KIBANA_SYSTEM_PASSWORD}
+    ports:
+      - "127.0.0.1:\${KIBANA_PORT}:5601"
+    depends_on:
+      - elasticsearch
+volumes:
+  es-data:
+`,
+  },
+  {
+    id: "postgres-pgadmin",
+    name: "Postgres + pgAdmin",
+    description: "Relational database with a web-based admin UI.",
+    category: "database",
+    tags: ["sql", "postgres", "admin"],
+    icon: "postgresql",
+    website: "https://www.postgresql.org",
+    source: { name: "docker/awesome-compose", url: "https://github.com/docker/awesome-compose", license: "CC0-1.0" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 512,
+    variables: [
+      { name: "PG_USER", type: "string", label: "User", default: "app" },
+      { name: "PG_PASSWORD", type: "password", label: "Postgres password", length: 20 },
+      { name: "PG_PORT", type: "port", label: "Postgres port", default: 5432 },
+      { name: "PGADMIN_PORT", type: "port", label: "pgAdmin port", default: 8081 },
+      { name: "PGADMIN_PASSWORD", type: "password", label: "pgAdmin password", length: 20 },
+    ],
+    endpoints: [
+      { name: "pgAdmin", url: "http://localhost:${PGADMIN_PORT}", username: "admin@example.com", password: "${PGADMIN_PASSWORD}", primary: true },
+      { name: "Connection string", value: "postgres://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/app" },
+    ],
+    preflight: [],
+    ready: { type: "healthy", timeoutSec: 120 },
+    notes: "Add a server in pgAdmin using the connection string's host/port and the Postgres password above.",
+    compose: `services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      - POSTGRES_USER=\${PG_USER}
+      - POSTGRES_PASSWORD=\${PG_PASSWORD}
+      - POSTGRES_DB=app
+    ports:
+      - "127.0.0.1:\${PG_PORT}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \${PG_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  pgadmin:
+    image: dpage/pgadmin4:8.11
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=\${PGADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:\${PGADMIN_PORT}:80"
+    depends_on:
+      - postgres
+volumes:
+  pg-data:
+`,
+  },
+  {
+    id: "redis",
+    name: "Redis",
+    description: "In-memory key-value store for caching and pub/sub.",
+    category: "database",
+    tags: ["cache", "kv", "pubsub"],
+    icon: "redis",
+    website: "https://redis.io",
+    source: { name: "Official Redis image", url: "https://hub.docker.com/_/redis", license: "MIT" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 256,
+    variables: [
+      { name: "REDIS_PASSWORD", type: "password", label: "Redis password", length: 20 },
+      { name: "REDIS_PORT", type: "port", label: "Redis port", default: 6379 },
+    ],
+    endpoints: [
+      { name: "Connection string", value: "redis://:${REDIS_PASSWORD}@localhost:${REDIS_PORT}", primary: true },
+    ],
+    preflight: [],
+    ready: { type: "running", timeoutSec: 30 },
+    notes: null,
+    compose: `services:
+  redis:
+    image: redis:7.2-alpine
+    command: ["redis-server", "--requirepass", "\${REDIS_PASSWORD}"]
+    ports:
+      - "127.0.0.1:\${REDIS_PORT}:6379"
+    volumes:
+      - redis-data:/data
+volumes:
+  redis-data:
+`,
+  },
+  {
+    id: "rabbitmq",
+    name: "RabbitMQ",
+    description: "Message broker with the management UI enabled.",
+    category: "messaging",
+    tags: ["amqp", "queue", "broker"],
+    icon: "rabbitmq",
+    website: "https://www.rabbitmq.com",
+    source: { name: "Official RabbitMQ image", url: "https://hub.docker.com/_/rabbitmq", license: "MIT" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 512,
+    variables: [
+      { name: "RABBITMQ_USER", type: "string", label: "User", default: "app" },
+      { name: "RABBITMQ_PASSWORD", type: "password", label: "Password", length: 20 },
+      { name: "RABBITMQ_PORT", type: "port", label: "AMQP port", default: 5672 },
+      { name: "RABBITMQ_UI_PORT", type: "port", label: "Management UI port", default: 15672 },
+    ],
+    endpoints: [
+      { name: "Management UI", url: "http://localhost:${RABBITMQ_UI_PORT}", username: "${RABBITMQ_USER}", password: "${RABBITMQ_PASSWORD}", primary: true },
+      { name: "AMQP URL", value: "amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@localhost:${RABBITMQ_PORT}" },
+    ],
+    preflight: [],
+    ready: { type: "http", url: "http://localhost:${RABBITMQ_UI_PORT}", expectStatus: [200], timeoutSec: 90 },
+    notes: null,
+    compose: `services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=\${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=\${RABBITMQ_PASSWORD}
+    ports:
+      - "127.0.0.1:\${RABBITMQ_PORT}:5672"
+      - "127.0.0.1:\${RABBITMQ_UI_PORT}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+volumes:
+  rabbitmq-data:
+`,
+  },
+  {
+    id: "grafana-prometheus",
+    name: "Grafana + Prometheus",
+    description: "Metrics collection and dashboards for local development.",
+    category: "monitoring",
+    tags: ["metrics", "dashboards", "observability"],
+    icon: "grafana",
+    website: "https://grafana.com",
+    source: { name: "docker/awesome-compose", url: "https://github.com/docker/awesome-compose", license: "CC0-1.0" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 1024,
+    variables: [
+      { name: "GRAFANA_PORT", type: "port", label: "Grafana port", default: 3000 },
+      { name: "GRAFANA_PASSWORD", type: "password", label: "Grafana admin password", length: 20 },
+      { name: "PROMETHEUS_PORT", type: "port", label: "Prometheus port", default: 9090 },
+    ],
+    endpoints: [
+      { name: "Grafana", url: "http://localhost:${GRAFANA_PORT}", username: "admin", password: "${GRAFANA_PASSWORD}", primary: true },
+      { name: "Prometheus", url: "http://localhost:${PROMETHEUS_PORT}" },
+    ],
+    preflight: [],
+    ready: { type: "http", url: "http://localhost:${GRAFANA_PORT}/api/health", expectStatus: [200], timeoutSec: 120 },
+    notes: null,
+    compose: `services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "127.0.0.1:\${PROMETHEUS_PORT}:9090"
+    volumes:
+      - prom-data:/prometheus
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=\${GRAFANA_PASSWORD}
+    ports:
+      - "127.0.0.1:\${GRAFANA_PORT}:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana-data:/var/lib/grafana
+volumes:
+  prom-data:
+  grafana-data:
+`,
+  },
+  {
+    id: "minio",
+    name: "MinIO",
+    description: "S3-compatible object storage with a web console.",
+    category: "storage",
+    tags: ["s3", "object-storage", "blob"],
+    icon: "minio",
+    website: "https://min.io",
+    source: { name: "Official MinIO image", url: "https://hub.docker.com/r/minio/minio", license: "AGPL-3.0" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 512,
+    variables: [
+      { name: "MINIO_ROOT_USER", type: "string", label: "Root user", default: "minioadmin" },
+      { name: "MINIO_ROOT_PASSWORD", type: "password", label: "Root password", length: 20 },
+      { name: "MINIO_API_PORT", type: "port", label: "API port", default: 9000 },
+      { name: "MINIO_CONSOLE_PORT", type: "port", label: "Console port", default: 9001 },
+    ],
+    endpoints: [
+      { name: "Console", url: "http://localhost:${MINIO_CONSOLE_PORT}", username: "${MINIO_ROOT_USER}", password: "${MINIO_ROOT_PASSWORD}", primary: true },
+      { name: "S3 API", url: "http://localhost:${MINIO_API_PORT}" },
+    ],
+    preflight: [],
+    ready: { type: "http", url: "http://localhost:${MINIO_API_PORT}/minio/health/live", expectStatus: [200], timeoutSec: 60 },
+    notes: null,
+    compose: `services:
+  minio:
+    image: minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=\${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=\${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:\${MINIO_API_PORT}:9000"
+      - "127.0.0.1:\${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio-data:/data
+volumes:
+  minio-data:
+`,
+  },
+  {
+    id: "keycloak",
+    name: "Keycloak",
+    description: "Identity and access management with OpenID Connect / SAML.",
+    category: "auth",
+    tags: ["oidc", "sso", "identity"],
+    icon: "keycloak",
+    website: "https://www.keycloak.org",
+    source: { name: "Official Keycloak image", url: "https://quay.io/repository/keycloak/keycloak", license: "Apache-2.0" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 1024,
+    variables: [
+      { name: "KEYCLOAK_ADMIN", type: "string", label: "Admin user", default: "admin" },
+      { name: "KEYCLOAK_ADMIN_PASSWORD", type: "password", label: "Admin password", length: 20 },
+      { name: "KEYCLOAK_PORT", type: "port", label: "Port", default: 8080 },
+    ],
+    endpoints: [
+      { name: "Admin console", url: "http://localhost:${KEYCLOAK_PORT}", username: "${KEYCLOAK_ADMIN}", password: "${KEYCLOAK_ADMIN_PASSWORD}", primary: true },
+    ],
+    preflight: [],
+    ready: { type: "http", url: "http://localhost:${KEYCLOAK_PORT}", expectStatus: [200, 302], timeoutSec: 150 },
+    notes: "Runs in development mode (start-dev) — not for production use.",
+    compose: `services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command: start-dev
+    environment:
+      - KEYCLOAK_ADMIN=\${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=\${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "127.0.0.1:\${KEYCLOAK_PORT}:8080"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+volumes:
+  keycloak-data:
+`,
+  },
+  {
+    id: "n8n",
+    name: "n8n",
+    description: "Workflow automation with a visual editor.",
+    category: "devtools",
+    tags: ["automation", "workflow", "integration"],
+    icon: "n8n",
+    website: "https://n8n.io",
+    source: { name: "Official n8n image", url: "https://hub.docker.com/r/n8nio/n8n", license: "Sustainable Use License" },
+    architectures: ["amd64", "arm64"],
+    minMemoryMB: 512,
+    variables: [
+      { name: "N8N_PORT", type: "port", label: "Port", default: 5678 },
+      { name: "N8N_USER", type: "string", label: "Basic-auth user", default: "admin" },
+      { name: "N8N_PASSWORD", type: "password", label: "Basic-auth password", length: 20 },
+    ],
+    endpoints: [
+      { name: "n8n", url: "http://localhost:${N8N_PORT}", username: "${N8N_USER}", password: "${N8N_PASSWORD}", primary: true },
+    ],
+    preflight: [],
+    ready: { type: "running", timeoutSec: 60 },
+    notes: null,
+    compose: `services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:1.58.2
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=\${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=\${N8N_PASSWORD}
+    ports:
+      - "127.0.0.1:\${N8N_PORT}:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+volumes:
+  n8n-data:
+`,
+  },
+];
+
+const mockCatalogById = new Map(mockCatalogItems.map((i) => [i.id, i]));
+
+/** `marketplace_catalog`: always "builtin" in mock mode — there's no real
+ * network fetch to simulate meaningfully differently here. */
+export function mockMarketplaceCatalog(): CatalogResponse {
+  return {
+    items: mockCatalogItems,
+    source: "builtin",
+    fetchedAt: isoAgo(0),
+    error: null,
+  };
+}
+
+/** Deterministic per-item default values (generated passwords use the real
+ * `generatePassword` helper so they look and behave like the real thing;
+ * ports use each variable's declared default — `marketplace_prepare`'s "next
+ * free port" allocation isn't meaningfully mockable without a real host). */
+function defaultValuesFor(item: CatalogItem): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const v of item.variables) {
+    if (v.type === "password") values[v.name] = generatePassword(v.length ?? 24);
+    else values[v.name] = String(v.default ?? "");
+  }
+  return values;
+}
+
+export function mockMarketplacePrepare(itemId: string): MarketplacePrepareResult {
+  const item = mockCatalogById.get(itemId);
+  if (!item) throw new Error(`Unknown marketplace item "${itemId}"`);
+  const values = defaultValuesFor(item);
+  const existingNames = new Set(mockInstalledApps.map((a) => a.projectName));
+  let projectName = `cd-${item.id}`;
+  let n = 2;
+  while (existingNames.has(projectName)) projectName = `cd-${item.id}-${n++}`;
+  return {
+    projectName,
+    variables: item.variables.map((v) => ({
+      name: v.name,
+      label: v.label,
+      type: v.type,
+      value: values[v.name],
+      hidden: v.hidden ?? false,
+    })),
+    preflight: mockMarketplacePreflight(itemId),
+  };
+}
+
+// Tracks which fixable preflight checks have been "fixed" this session, so
+// the elasticsearch-kibana demo item goes from failing to passing after the
+// user clicks Fix — reset would require a page reload, same as any other
+// in-memory mock state in this file.
+const mockFixedPreflightChecks = new Set<string>();
+
+export function mockMarketplacePreflight(itemId: string): PreflightResult[] {
+  const item = mockCatalogById.get(itemId);
+  if (!item) return [];
+  const results: PreflightResult[] = [
+    { id: `${itemId}:arch`, ok: true, severity: "error", message: "VM architecture is supported", fixable: false },
+    { id: `${itemId}:memory`, ok: true, severity: "warning", message: "VM memory is sufficient", fixable: false },
+    { id: `${itemId}:compose`, ok: true, severity: "error", message: "Docker Compose is available", fixable: false },
+  ];
+  for (const check of item.preflight) {
+    if (check.type === "sysctl") {
+      const id = `${itemId}:sysctl:${check.key}`;
+      const fixed = mockFixedPreflightChecks.has(id);
+      results.push({
+        id,
+        ok: fixed,
+        severity: "error",
+        message: fixed
+          ? `${check.key} is set to at least ${check.min}`
+          : `${check.key} must be at least ${check.min} (currently below the minimum)`,
+        fixable: true,
+      });
+    }
+  }
+  return results;
+}
+
+export function mockMarketplaceFixPreflight(checkId: string): void {
+  mockFixedPreflightChecks.add(checkId);
+}
+
+/** Builds the `InstalledApp` returned by `marketplace_install`, rendering
+ * the item's endpoint templates against the submitted values. */
+export function mockMarketplaceInstallResult(
+  itemId: string,
+  projectName: string,
+  values: Record<string, string>,
+): InstalledApp {
+  const item = mockCatalogById.get(itemId);
+  if (!item) throw new Error(`Unknown marketplace item "${itemId}"`);
+  const app: InstalledApp = {
+    projectName,
+    itemId: item.id,
+    name: item.name,
+    icon: item.icon,
+    createdAt: new Date().toISOString(),
+    status: `running(${(item.compose.match(/^\s{2}\S.*:\s*$/gm) ?? []).length || 1})`,
+    endpoints: renderEndpoints(item.endpoints, values),
+    notes: item.notes,
+  };
+  mockInstalledApps = [app, ...mockInstalledApps.filter((a) => a.projectName !== projectName)];
+  return app;
+}
+
+/** Two installed apps (one healthy, one "missing" — its containers were
+ * removed outside the app, e.g. `docker compose down` from a terminal, so
+ * the instance directory still exists but nothing is running) so the
+ * Installed tab and its Credentials/Stop/Uninstall actions have something
+ * to demo without going through Install first. */
+let mockInstalledApps: InstalledApp[] = [
+  {
+    projectName: "cd-redis",
+    itemId: "redis",
+    name: "Redis",
+    icon: "redis",
+    createdAt: isoAgo(2 * 24 * 3600 * 1000),
+    status: "running(1)",
+    endpoints: renderEndpoints(mockCatalogById.get("redis")!.endpoints, {
+      REDIS_PASSWORD: "kX8mQ2pL9vN4wR7t",
+      REDIS_PORT: "6379",
+    }),
+    notes: mockCatalogById.get("redis")!.notes,
+  },
+  {
+    projectName: "cd-postgres-pgadmin",
+    itemId: "postgres-pgadmin",
+    name: "Postgres + pgAdmin",
+    icon: "postgresql",
+    createdAt: isoAgo(9 * 24 * 3600 * 1000),
+    status: "running(2)",
+    endpoints: renderEndpoints(mockCatalogById.get("postgres-pgadmin")!.endpoints, {
+      PG_USER: "app",
+      PG_PASSWORD: "aZ3fG8hJ2kL9mN4p",
+      PG_PORT: "5432",
+      PGADMIN_PORT: "8081",
+      PGADMIN_PASSWORD: "qW7eR4tY1uI8oP2s",
+    }),
+    notes: mockCatalogById.get("postgres-pgadmin")!.notes,
+  },
+  {
+    projectName: "cd-n8n",
+    itemId: "n8n",
+    name: "n8n",
+    icon: "n8n",
+    createdAt: isoAgo(30 * 24 * 3600 * 1000),
+    status: "missing",
+    endpoints: renderEndpoints(mockCatalogById.get("n8n")!.endpoints, {
+      N8N_PORT: "5678",
+      N8N_USER: "admin",
+      N8N_PASSWORD: "vB6nM3cX0zL7kJ4h",
+    }),
+    notes: "Containers for this app were not found — they may have been removed outside Colima Desktop.",
+  },
+];
+
+export function mockMarketplaceInstalled(): InstalledApp[] {
+  return mockInstalledApps;
+}
+
+export function mockMarketplaceUninstall(projectName: string): void {
+  mockInstalledApps = mockInstalledApps.filter((a) => a.projectName !== projectName);
 }

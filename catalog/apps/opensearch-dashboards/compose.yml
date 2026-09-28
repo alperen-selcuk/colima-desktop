@@ -1,0 +1,60 @@
+# Adapted from the official OpenSearch Docker Compose quickstart (Apache-2.0)
+# https://github.com/opensearch-project/documentation-website (assets/examples/docker-compose.yml)
+# Single-node variant. The default OpenSearch password policy requires a special character;
+# it is relaxed to length-only here so the generated alphanumeric password is accepted.
+services:
+  opensearch:
+    image: docker.io/opensearchproject/opensearch:3.8.0
+    environment:
+      - discovery.type=single-node
+      - cluster.name=colima-desktop-opensearch
+      - node.name=opensearch
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
+      - "plugins.security.restapi.password_validation_regex=^.{8,}$$"
+      - plugins.security.restapi.password_validation_error_message=Password must be at least 8 characters.
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "127.0.0.1:${OPENSEARCH_PORT}:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sk -u admin:${OPENSEARCH_PASSWORD} https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  dashboards:
+    image: docker.io/opensearchproject/opensearch-dashboards:3.8.0
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - 'OPENSEARCH_HOSTS=["https://opensearch:9200"]'
+      - OPENSEARCH_USERNAME=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    ports:
+      - "127.0.0.1:${DASHBOARDS_PORT}:5601"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf -u admin:${OPENSEARCH_PASSWORD} http://localhost:5601/api/status | grep -q '\"state\":\"green\"\\|\"state\":\"yellow\"'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  opensearch-data:

@@ -1,0 +1,38 @@
+{
+  "id": "ollama-open-webui",
+  "name": "Ollama + Open WebUI",
+  "description": "Ollama local LLM runtime with Open WebUI, a ChatGPT-style browser interface for chatting with local models.",
+  "category": "ai",
+  "tags": ["ollama", "llm", "open-webui", "ai"],
+  "icon": "ollama",
+  "website": "https://ollama.com",
+  "source": {
+    "name": "Open WebUI official documentation (Docker Compose with Ollama)",
+    "url": "https://github.com/open-webui/open-webui",
+    "license": "MIT (Open WebUI); Ollama is MIT-licensed"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 4096,
+  "variables": [
+    { "name": "OLLAMA_PORT", "type": "port", "label": "Ollama API port", "default": 11434 },
+    { "name": "OPEN_WEBUI_PORT", "type": "port", "label": "Open WebUI port", "default": 3080 }
+  ],
+  "endpoints": [
+    {
+      "name": "Open WebUI",
+      "url": "http://localhost:${OPEN_WEBUI_PORT}",
+      "primary": true
+    },
+    {
+      "name": "Ollama API",
+      "url": "http://localhost:${OLLAMA_PORT}"
+    }
+  ],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${OPEN_WEBUI_PORT}/health",
+    "expectStatus": [200],
+    "timeoutSec": 240
+  },
+  "notes": "No models are pulled automatically (they can be multiple GB). Open WebUI's first visitor becomes the local admin account — create it on first load. Pull a model from inside the container with `docker exec <ollama container> ollama pull llama3.2`, or from the Open WebUI Settings > Models screen."
+}

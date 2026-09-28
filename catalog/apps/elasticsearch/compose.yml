@@ -1,0 +1,26 @@
+# Adapted from deviantony/docker-elk (MIT) — https://github.com/deviantony/docker-elk
+# Single-node variant with security enabled, tuned for local development.
+services:
+  elasticsearch:
+    image: docker.io/library/elasticsearch:8.19.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "127.0.0.1:${ES_PORT}:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  es-data:

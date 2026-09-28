@@ -1,0 +1,98 @@
+# Adapted from Grafana Loki's official docker-compose quickstart pattern
+# (https://github.com/grafana/loki/tree/main/production, Apache-2.0 docs), using the official
+# loki and grafana images. No bind mounts (named volumes only): a one-shot init container writes
+# Loki's config and Grafana's datasource provisioning file into named volumes first.
+services:
+  loki-config:
+    image: docker.io/library/alpine:3.21
+    restart: "no"
+    volumes:
+      - loki-config:/config
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /config/loki-config.yml <<'EOF'
+        auth_enabled: false
+        server:
+          http_listen_port: 3100
+        common:
+          path_prefix: /loki
+          storage:
+            filesystem:
+              chunks_directory: /loki/chunks
+              rules_directory: /loki/rules
+          replication_factor: 1
+          ring:
+            kvstore:
+              store: inmemory
+        schema_config:
+          configs:
+            - from: 2024-01-01
+              store: tsdb
+              object_store: filesystem
+              schema: v13
+              index:
+                prefix: index_
+                period: 24h
+        limits_config:
+          allow_structured_metadata: true
+        EOF
+
+  grafana-provisioning:
+    image: docker.io/library/alpine:3.21
+    restart: "no"
+    volumes:
+      - grafana-provisioning:/config
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /config/datasources
+        cat > /config/datasources/loki.yml <<'EOF'
+        apiVersion: 1
+        datasources:
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki:3100
+            isDefault: true
+        EOF
+
+  loki:
+    image: docker.io/grafana/loki:3.7.8
+    depends_on:
+      loki-config:
+        condition: service_completed_successfully
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - loki-config:/etc/loki
+      - loki-data:/loki
+    ports:
+      - "127.0.0.1:${LOKI_PORT}:3100"
+    # No healthcheck: grafana/loki's image ships only the loki binary (no shell, wget or curl),
+    # so a CMD-SHELL probe can't run inside it. Grafana's own healthcheck (below) is what the
+    # "healthy" ready probe waits on; Grafana's datasource proxy will simply retry until Loki
+    # answers, which in practice is a couple of seconds after the container starts.
+
+  grafana:
+    image: docker.io/grafana/grafana:13.2.2
+    depends_on:
+      grafana-provisioning:
+        condition: service_completed_successfully
+      loki:
+        condition: service_started
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana-provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT}:3000"
+
+volumes:
+  loki-config:
+  loki-data:
+  grafana-provisioning:
+  grafana-data:

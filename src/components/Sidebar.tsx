@@ -1,9 +1,9 @@
-import { Boxes, Container as ContainerIcon, HardDrive, Layers, Monitor, Moon, Server, Settings, Sun } from "lucide-react";
+import { Boxes, Container as ContainerIcon, HardDrive, Layers, Monitor, Moon, Server, Settings, Store, Sun } from "lucide-react";
 import type { EnvInfo } from "../lib/types";
 import { useTheme } from "../lib/useTheme";
 import type { ThemePreference } from "../lib/format";
 
-export type Page = "machines" | "containers" | "images" | "volumes" | "kubernetes" | "setup";
+export type Page = "machines" | "containers" | "images" | "volumes" | "marketplace" | "kubernetes" | "setup";
 
 interface NavItem {
   id: Page;
@@ -16,6 +16,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "containers", label: "Containers", icon: ContainerIcon },
   { id: "images", label: "Images", icon: Layers },
   { id: "volumes", label: "Volumes", icon: HardDrive },
+  { id: "marketplace", label: "Marketplace", icon: Store },
   { id: "kubernetes", label: "Kubernetes", icon: Boxes },
 ];
 

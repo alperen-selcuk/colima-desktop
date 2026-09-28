@@ -1,0 +1,16 @@
+# Adapted from the official Jaeger all-in-one Docker quickstart (Apache-2.0)
+# https://www.jaegertracing.io/docs/latest/getting-started/
+services:
+  jaeger:
+    image: docker.io/jaegertracing/jaeger:2.21.0
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "127.0.0.1:${JAEGER_UI_PORT}:16686"
+      - "127.0.0.1:${JAEGER_OTLP_GRPC_PORT}:4317"
+      - "127.0.0.1:${JAEGER_OTLP_HTTP_PORT}:4318"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20

@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/alperen-selcuk/colima-desktop/catalog/schema.json",
+  "title": "Colima Desktop marketplace app",
+  "description": "Schema for catalog/apps/<id>/app.json — see docs/SPEC.md §6.8 and catalog/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "name",
+    "description",
+    "category",
+    "tags",
+    "icon",
+    "website",
+    "source",
+    "architectures",
+    "minMemoryMB",
+    "variables",
+    "endpoints",
+    "ready"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Must equal the app's folder name under catalog/apps/."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "search",
+        "database",
+        "messaging",
+        "monitoring",
+        "storage",
+        "auth",
+        "devtools",
+        "ai"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+      "uniqueItems": true
+    },
+    "icon": {
+      "type": "string",
+      "description": "simple-icons slug (kebab-case); unknown slugs fall back to a generic glyph in the UI.",
+      "pattern": "^[a-z0-9][a-z0-9.-]*$"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "license"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "license": { "type": "string", "minLength": 1 }
+      }
+    },
+    "architectures": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["amd64", "arm64"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "minMemoryMB": {
+      "type": "integer",
+      "minimum": 256
+    },
+    "variables": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/variable" }
+    },
+    "endpoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/endpoint" }
+    },
+    "preflight": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/preflightCheck" }
+    },
+    "ready": { "$ref": "#/$defs/readyProbe" },
+    "notes": {
+      "type": "string",
+      "maxLength": 2000
+    }
+  },
+  "$defs": {
+    "variable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$",
+          "description": "Referenced as ${NAME} in compose.yml, endpoints[].url/value/username/password and ready.url."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["password", "port", "string"]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "default": {
+          "type": ["string", "number"]
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 128,
+          "description": "password type only: generated alphanumeric length."
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Internal variable not shown in the install form by default (e.g. an internal service-account password)."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "port" } } },
+          "then": { "required": ["default"] }
+        }
+      ]
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "primary": { "type": "boolean" }
+      },
+      "description": "Exactly one of url/value should be set: url for a browsable/HTTP endpoint, value for a connection string.",
+      "anyOf": [{ "required": ["url"] }, { "required": ["value"] }]
+    },
+    "preflightCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["sysctl"] },
+        "key": { "type": "string", "minLength": 1 },
+        "min": { "type": "number" }
+      }
+    },
+    "readyProbe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "timeoutSec"],
+      "properties": {
+        "type": { "type": "string", "enum": ["http", "healthy", "running"] },
+        "url": { "type": "string", "minLength": 1 },
+        "expectStatus": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 100, "maximum": 599 }
+        },
+        "timeoutSec": { "type": "integer", "minimum": 5, "maximum": 900 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "http" } } },
+          "then": { "required": ["url"] }
+        }
+      ]
+    }
+  }
+}

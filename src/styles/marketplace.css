@@ -1,0 +1,315 @@
+/*
+ * Marketplace page tokens (Section 6.8). Separate from src/index.css (owned
+ * by another concurrent workstream) so this page never conflicts with it —
+ * same pattern as src/styles/containers.css and src/styles/k8s.css.
+ *
+ * --market-purple is this pages own chrome accent (header mark, primary tab
+ * underline), sitting alongside the apps green brand accent and the other
+ * pages own chrome accents (--docker-blue, --k8s-blue) — never used for
+ * anything semantic (status, errors), only for the Marketplace identity in
+ * the header and Browse/Installed tab strip.
+ *
+ * --market-<category> are the 8 catalog category accents (search, database,
+ * messaging, monitoring, storage, auth, devtools, ai). Deliberately kept out
+ * of the k8s-kind and container-fallback color families: those are
+ * identity/fallback colors for other pages own domains. Each category gets a
+ * single hue used
+ * consistently for that categorys chip, its cards icon-tile tint and left
+ * accent bar, and its detail drawer header tile — the grids only per-card
+ * color signal, everything else (borders, text) stays neutral surface tokens
+ * so the page reads as calm chrome, not a card kit of arbitrary color.
+ *
+ * Same three-block pattern as index.css/k8s.css: light default in :root,
+ * dark via prefers-color-scheme, and explicit data-theme overrides.
+ */
+
+:root {
+  --market-purple: #7c3aed;
+  --market-purple-soft: rgba(124, 58, 237, 0.11);
+
+  --market-search: #0f8fa8;
+  --market-search-soft: rgba(15, 143, 168, 0.12);
+  --market-database: #3f6fd6;
+  --market-database-soft: rgba(63, 111, 214, 0.12);
+  --market-messaging: #b3671f;
+  --market-messaging-soft: rgba(179, 103, 31, 0.13);
+  --market-monitoring: #c33d74;
+  --market-monitoring-soft: rgba(195, 61, 116, 0.12);
+  --market-storage: #4b7a63;
+  --market-storage-soft: rgba(75, 122, 99, 0.13);
+  --market-auth: #5b63b7;
+  --market-auth-soft: rgba(91, 99, 183, 0.12);
+  --market-devtools: #1f9d73;
+  --market-devtools-soft: rgba(31, 157, 115, 0.12);
+  --market-ai: #8b2fc9;
+  --market-ai-soft: rgba(139, 47, 201, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --market-purple: #a78bfa;
+    --market-purple-soft: rgba(167, 139, 250, 0.16);
+
+    --market-search: #22b8cf;
+    --market-search-soft: rgba(34, 184, 207, 0.16);
+    --market-database: #6f9bef;
+    --market-database-soft: rgba(111, 155, 239, 0.16);
+    --market-messaging: #d99a4e;
+    --market-messaging-soft: rgba(217, 154, 78, 0.18);
+    --market-monitoring: #e1548c;
+    --market-monitoring-soft: rgba(225, 84, 140, 0.16);
+    --market-storage: #6fb894;
+    --market-storage-soft: rgba(111, 184, 148, 0.16);
+    --market-auth: #8a97cf;
+    --market-auth-soft: rgba(138, 151, 207, 0.16);
+    --market-devtools: #2fb786;
+    --market-devtools-soft: rgba(47, 183, 134, 0.16);
+    --market-ai: #b57bf0;
+    --market-ai-soft: rgba(181, 123, 240, 0.16);
+  }
+}
+
+:root[data-theme="dark"] {
+  --market-purple: #a78bfa;
+  --market-purple-soft: rgba(167, 139, 250, 0.16);
+
+  --market-search: #22b8cf;
+  --market-search-soft: rgba(34, 184, 207, 0.16);
+  --market-database: #6f9bef;
+  --market-database-soft: rgba(111, 155, 239, 0.16);
+  --market-messaging: #d99a4e;
+  --market-messaging-soft: rgba(217, 154, 78, 0.18);
+  --market-monitoring: #e1548c;
+  --market-monitoring-soft: rgba(225, 84, 140, 0.16);
+  --market-storage: #6fb894;
+  --market-storage-soft: rgba(111, 184, 148, 0.16);
+  --market-auth: #8a97cf;
+  --market-auth-soft: rgba(138, 151, 207, 0.16);
+  --market-devtools: #2fb786;
+  --market-devtools-soft: rgba(47, 183, 134, 0.16);
+  --market-ai: #b57bf0;
+  --market-ai-soft: rgba(181, 123, 240, 0.16);
+}
+
+:root[data-theme="light"] {
+  --market-purple: #7c3aed;
+  --market-purple-soft: rgba(124, 58, 237, 0.11);
+
+  --market-search: #0f8fa8;
+  --market-search-soft: rgba(15, 143, 168, 0.12);
+  --market-database: #3f6fd6;
+  --market-database-soft: rgba(63, 111, 214, 0.12);
+  --market-messaging: #b3671f;
+  --market-messaging-soft: rgba(179, 103, 31, 0.13);
+  --market-monitoring: #c33d74;
+  --market-monitoring-soft: rgba(195, 61, 116, 0.12);
+  --market-storage: #4b7a63;
+  --market-storage-soft: rgba(75, 122, 99, 0.13);
+  --market-auth: #5b63b7;
+  --market-auth-soft: rgba(91, 99, 183, 0.12);
+  --market-devtools: #1f9d73;
+  --market-devtools-soft: rgba(31, 157, 115, 0.12);
+  --market-ai: #8b2fc9;
+  --market-ai-soft: rgba(139, 47, 201, 0.1);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Layout helpers specific to the Marketplace page                         */
+/* ---------------------------------------------------------------------- */
+
+.mkt-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.mkt-tab[data-active="true"] {
+  color: var(--text);
+  border-bottom-color: var(--market-purple);
+}
+
+.mkt-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--text-faint);
+}
+
+.mkt-tab[data-active="true"] .mkt-tab-count {
+  background: var(--market-purple-soft);
+  color: var(--market-purple);
+}
+
+.mkt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mkt-chip[data-active="true"] {
+  color: var(--chip-accent, var(--market-purple));
+  border-color: var(--chip-accent, var(--market-purple));
+  background: var(--chip-accent-soft, var(--market-purple-soft));
+}
+
+.mkt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--card-accent, var(--border));
+  background: var(--surface-1);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.mkt-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  border-left-color: var(--card-accent, var(--border-strong));
+}
+
+.mkt-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.mkt-category-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--badge-accent-soft, var(--surface-3));
+  color: var(--badge-accent, var(--text-faint));
+}
+
+.mkt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mkt-badge-neutral {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--surface-3);
+  color: var(--text-faint);
+}
+
+.mkt-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.mkt-step[data-state="active"] {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.mkt-step[data-state="done"] {
+  color: var(--accent);
+}
+
+.mkt-step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-strong);
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.mkt-step[data-state="active"] .mkt-step-dot {
+  border-color: var(--market-purple);
+  color: var(--market-purple);
+}
+
+.mkt-step[data-state="done"] .mkt-step-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.mkt-preflight-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+}
+
+.mkt-preflight-row[data-ok="false"][data-severity="error"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.mkt-preflight-row[data-ok="false"][data-severity="warning"] {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.mkt-endpoint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}

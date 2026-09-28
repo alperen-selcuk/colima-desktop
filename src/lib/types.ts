@@ -430,3 +430,127 @@ export interface ComposeUpOptions {
 }
 
 export type ComposeActionKind = "stop" | "start" | "restart" | "down" | "pull";
+
+// ---- §6.8: Marketplace (one-click apps & stacks) ----
+
+export type MarketplaceCategory =
+  | "search"
+  | "database"
+  | "messaging"
+  | "monitoring"
+  | "storage"
+  | "auth"
+  | "devtools"
+  | "ai";
+
+export type MarketplaceVariableType = "string" | "password" | "port";
+
+/** A declared variable from an app's `app.json` (catalog source, not yet
+ * resolved to a concrete value — see `PreparedVariable` for that). */
+export interface MarketplaceVariable {
+  name: string;
+  type: MarketplaceVariableType;
+  label: string;
+  default?: string | number;
+  length?: number; // password: generated length
+  hidden?: boolean; // internal, collapsed under "Advanced" in the Install dialog
+}
+
+export interface MarketplaceEndpointTemplate {
+  name: string;
+  url?: string; // may contain ${VAR} interpolation
+  value?: string; // connection string etc., may contain ${VAR}
+  username?: string;
+  password?: string;
+  primary?: boolean;
+}
+
+export type MarketplacePreflightSpec = { type: "sysctl"; key: string; min: number };
+
+export type MarketplaceReadySpec =
+  | { type: "http"; url: string; expectStatus: number[]; timeoutSec: number }
+  | { type: "healthy"; timeoutSec: number }
+  | { type: "running"; timeoutSec: number };
+
+export interface MarketplaceSource {
+  name: string;
+  url: string;
+  license: string;
+}
+
+/** `app.json` + the embedded `compose.yml` text, as served by `marketplace_catalog` (dist/catalog.json). */
+export interface CatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  category: MarketplaceCategory;
+  tags: string[];
+  icon: string; // simple-icons slug; unknown -> generic glyph
+  website: string;
+  source: MarketplaceSource;
+  architectures: string[]; // "amd64" | "arm64"
+  minMemoryMB: number;
+  variables: MarketplaceVariable[];
+  endpoints: MarketplaceEndpointTemplate[];
+  preflight: MarketplacePreflightSpec[];
+  ready: MarketplaceReadySpec;
+  notes: string | null;
+  compose: string; // compose.yml text, ${VAR} interpolation only
+}
+
+export type CatalogSource = "remote" | "cache" | "builtin";
+
+export interface CatalogResponse {
+  items: CatalogItem[];
+  source: CatalogSource;
+  fetchedAt: string | null;
+  error: string | null;
+}
+
+export type PreflightSeverity = "error" | "warning";
+
+export interface PreflightResult {
+  id: string;
+  ok: boolean;
+  severity: PreflightSeverity;
+  message: string;
+  fixable: boolean;
+}
+
+/** One variable pre-populated by `marketplace_prepare` (password generated,
+ * port allocated to a free default) — the Install dialog edits these in place. */
+export interface PreparedVariable {
+  name: string;
+  label: string;
+  type: MarketplaceVariableType;
+  value: string;
+  hidden: boolean;
+}
+
+export interface MarketplacePrepareResult {
+  projectName: string;
+  variables: PreparedVariable[];
+  preflight: PreflightResult[];
+}
+
+/** A rendered endpoint (§6.8's `InstalledApp.endpoints`): templates from the
+ * catalog item resolved against the instance's actual variable values. */
+export interface MarketplaceEndpoint {
+  name: string;
+  url: string | null;
+  value: string | null;
+  username: string | null;
+  password: string | null;
+  primary: boolean;
+}
+
+export interface InstalledApp {
+  projectName: string;
+  itemId: string;
+  name: string;
+  icon: string;
+  createdAt: string;
+  status: string; // compose status string, or "missing"
+  endpoints: MarketplaceEndpoint[];
+  notes: string | null;
+}

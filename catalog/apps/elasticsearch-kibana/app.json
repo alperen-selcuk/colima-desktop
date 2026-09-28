@@ -1,0 +1,45 @@
+{
+  "id": "elasticsearch-kibana",
+  "name": "Elasticsearch + Kibana",
+  "description": "Single-node Elasticsearch with security enabled, plus Kibana for browsing and visualizing data.",
+  "category": "search",
+  "tags": ["elasticsearch", "kibana", "elk", "logs"],
+  "icon": "kibana",
+  "website": "https://www.elastic.co/kibana",
+  "source": {
+    "name": "deviantony/docker-elk",
+    "url": "https://github.com/deviantony/docker-elk",
+    "license": "MIT"
+  },
+  "architectures": ["amd64", "arm64"],
+  "minMemoryMB": 3072,
+  "variables": [
+    { "name": "ELASTIC_PASSWORD", "type": "password", "label": "elastic superuser password", "length": 24 },
+    { "name": "KIBANA_SYSTEM_PASSWORD", "type": "password", "label": "kibana_system password", "length": 24, "hidden": true },
+    { "name": "ES_PORT", "type": "port", "label": "Elasticsearch HTTP port", "default": 9200 },
+    { "name": "KIBANA_PORT", "type": "port", "label": "Kibana port", "default": 5601 }
+  ],
+  "endpoints": [
+    {
+      "name": "Kibana",
+      "url": "http://localhost:${KIBANA_PORT}",
+      "username": "elastic",
+      "password": "${ELASTIC_PASSWORD}",
+      "primary": true
+    },
+    {
+      "name": "Elasticsearch API",
+      "url": "http://localhost:${ES_PORT}",
+      "username": "elastic",
+      "password": "${ELASTIC_PASSWORD}"
+    }
+  ],
+  "preflight": [{ "type": "sysctl", "key": "vm.max_map_count", "min": 262144 }],
+  "ready": {
+    "type": "http",
+    "url": "http://localhost:${KIBANA_PORT}/api/status",
+    "expectStatus": [200, 401],
+    "timeoutSec": 240
+  },
+  "notes": "A one-shot setup container sets the kibana_system password via the Elasticsearch security API before Kibana starts, exactly like docker-elk does. Sign in to Kibana with the elastic user."
+}
