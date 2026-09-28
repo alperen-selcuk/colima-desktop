@@ -2,7 +2,7 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
-## [Unreleased]
+## [0.1.4] - 2026-09-28
 
 ### Fixed
 
