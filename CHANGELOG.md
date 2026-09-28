@@ -2,6 +2,32 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.1.3] - 2026-09-28
+
+### Added
+
+- **Docker Compose:** "Compose up…" picks a `.yml`/`.yaml` file, validates it with `docker compose config` and
+  previews services, images and ports, then runs `up -d` (options: build, pull always, force recreate) with
+  output streamed to the Output tab. Recent files are remembered. Compose projects get Up / Restart / Stop /
+  Start / Down (optionally removing volumes) / Pull and a project panel with services and aggregated live logs.
+  Uses the `docker compose` plugin, falling back to a standalone `docker-compose`.
+- Redesigned Containers page: Docker Engine header, stat tiles (running, stopped, compose projects, CPU,
+  memory), filter chips, brand logos for well-known images via Simple Icons (CC0) with a tinted fallback glyph,
+  clickable port chips and CPU/memory mini bars.
+
+### Changed
+
+- Kubernetes-managed containers (k3s pods and sandboxes, labelled `io.kubernetes.pod.namespace`) are hidden
+  from the Containers page by default, including the exited leftovers that remain when Kubernetes is disabled.
+  A filter toggle can show them.
+- The Homebrew cask now depends on `docker-compose`.
+
+### Fixed
+
+- Container labels whose values contain commas (multi-file compose projects, k3s annotations) were split
+  incorrectly; labels are now read from `docker inspect` as JSON.
+- Images could lose their "in use" badges when a container disappeared between listing and inspection.
+
 ## [0.1.2] - 2026-09-27
 
 ### Added
