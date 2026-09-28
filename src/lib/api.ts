@@ -167,7 +167,7 @@ async function mockInvoke<T>(
     case "remove_volume":
       return undefined as unknown as T;
     case "prune":
-      return "Total reclaimed space: 0B" as unknown as T;
+      return "Deleted Volumes:\nsetur-nuget\n\nTotal reclaimed space: 0B" as unknown as T;
     case "k8s_namespaces":
       return ["default", "kube-system"] as unknown as T;
     case "k8s_pods":

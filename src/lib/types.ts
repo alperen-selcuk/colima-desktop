@@ -122,11 +122,19 @@ export interface Image {
 }
 
 export interface Volume {
-  // `docker volume ls --format '{{json .}}'`
+  // `docker volume ls --format '{{json .}}'`, enriched with `docker system
+  // df -v --format '{{json .Volumes}}'` (size/containers) and a batched
+  // `docker volume inspect` (createdAt/labels) — see docs/SPEC.md §3/§4.
   name: string;
   driver: string;
   mountpoint: string;
-  size: string | null;
+  size: string | null; // e.g. "136.5MB"; null if the size lookup failed
+  sizeBytes: number | null; // `size` parsed to bytes (decimal/SI units); null if unknown
+  containers: number | null; // number of containers referencing this volume; null if unknown
+  inUse: boolean; // containers > 0 (fails open to false if the lookup failed)
+  anonymous: boolean; // label com.docker.volume.anonymous present
+  composeProject: string | null; // label com.docker.compose.project
+  createdAt: string | null; // docker volume inspect's CreatedAt (RFC3339)
 }
 
 export interface RunOptions {
@@ -324,7 +332,7 @@ export type ContainerAction =
 
 export type KubernetesActionKind = "start" | "stop" | "reset" | "delete";
 
-export type PruneTarget = "containers" | "images" | "volumes" | "system";
+export type PruneTarget = "containers" | "images" | "volumes" | "volumes-all" | "system";
 
 export type LogTarget =
   | { kind: "container"; id: string; tail: number }

@@ -451,15 +451,137 @@ pub struct Volume {
     pub name: String,
     pub driver: String,
     pub mountpoint: String,
+    /// Human-readable size as docker formats it (e.g. "136.5MB"), from
+    /// `docker system df -v --format '{{json .Volumes}}'`. `None` on any
+    /// lookup failure (best-effort).
     pub size: Option<String>,
+    /// `size` parsed to bytes (decimal/SI units — see [`parse_size_bytes`]),
+    /// for sorting and totals. `None` when `size` is missing or "N/A".
+    pub size_bytes: Option<u64>,
+    /// Number of containers currently referencing this volume (`Links` from
+    /// `system df -v`), `None` if the size/links lookup failed entirely.
+    pub containers: Option<u32>,
+    /// `containers > 0` — i.e. at least one container (any state) mounts it.
+    /// `false` when the links lookup failed (fails safe: never claims
+    /// "unused" without evidence... but see doc note on `list_volumes`).
+    pub in_use: bool,
+    /// Label `com.docker.volume.anonymous` is present (compose/`docker run`
+    /// create anonymous volumes with this label; `docker volume prune`
+    /// without `-a` only removes these).
+    pub anonymous: bool,
+    /// Label `com.docker.compose.project`, if present.
+    pub compose_project: Option<String>,
+    /// `docker volume inspect`'s `CreatedAt` (RFC3339), `None` if the batched
+    /// inspect call failed for this volume.
+    pub created_at: Option<String>,
 }
 
+/// One entry of `docker system df -v --format '{{json .Volumes}}'`'s
+/// `Volumes` array (note: **not** `docker volume ls`, whose own `--format
+/// '{{json .}}'` has no `Size`/`Links` fields at all — verified live against
+/// docker server 27.4.0 on a colima socket). `Size`/`Links` are strings here
+/// ("136.5MB", "0", or "N/A"), not typed.
 #[derive(Debug, Clone, Deserialize)]
 struct RawSystemDfVolume {
     #[serde(rename = "Name")]
     name: String,
-    #[serde(rename = "Size")]
+    #[serde(rename = "Size", default)]
     size: Option<String>,
+    #[serde(rename = "Links", default)]
+    links: Option<String>,
+}
+
+/// One volume's `CreatedAt` + real label map, from a single batched `docker
+/// volume inspect <names...>` call (JSON array). Unlike `docker ps`'s
+/// flattened `Labels` string (see [`parse_labels`]'s doc comment), `docker
+/// volume inspect` gives labels as a real JSON object already, so no
+/// comma-splitting hazard here — but `Labels` is `null`, not `{}`, for a
+/// volume with no labels (verified live), so it must be optional.
+#[derive(Debug, Clone, Deserialize)]
+struct RawVolumeInspect {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "CreatedAt", default)]
+    created_at: Option<String>,
+    #[serde(rename = "Labels", default)]
+    labels: Option<HashMap<String, String>>,
+}
+
+/// Parse a docker size string into bytes. Docker's `system df` formatter
+/// uses **decimal** (SI, 1000-based) units for kB/MB/GB/TB — unlike `docker
+/// stats`' MemUsage (binary/1024-based KiB/MiB/GiB) parsed elsewhere in this
+/// file — verified against `go-units.HumanSize` (used by `system df`), which
+/// divides by 1000. Accepts "0B", "N/A" (-> None), "136.5MB", "1.2GB", "678.3MB".
+pub fn parse_size_bytes(raw: &str) -> Option<u64> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.eq_ignore_ascii_case("n/a") {
+        return None;
+    }
+    let split_at = raw.find(|c: char| !(c.is_ascii_digit() || c == '.'))?;
+    let (num_str, unit) = raw.split_at(split_at);
+    let value: f64 = num_str.parse().ok()?;
+    let unit = unit.trim();
+    let mult: f64 = match unit.to_ascii_uppercase().as_str() {
+        "B" => 1.0,
+        "KB" => 1_000.0,
+        "MB" => 1_000_000.0,
+        "GB" => 1_000_000_000.0,
+        "TB" => 1_000_000_000_000.0,
+        "PB" => 1_000_000_000_000_000.0,
+        _ => return None,
+    };
+    Some((value * mult).round() as u64)
+}
+
+/// Parse the `Links` field of `system df -v`'s volume entry ("0", "3",
+/// "N/A") into a container count. "N/A" / unparseable -> `None`.
+fn parse_links(raw: &str) -> Option<u32> {
+    let raw = raw.trim();
+    if raw.is_empty() || raw.eq_ignore_ascii_case("n/a") {
+        return None;
+    }
+    raw.parse().ok()
+}
+
+/// Build each volume from `docker volume ls` + best-effort `system df -v`
+/// (size/links) + best-effort `volume inspect` (createdAt/labels), matched
+/// by name. Any of the two enrichment lookups failing independently just
+/// leaves the corresponding fields `None`/`false` for every volume — see
+/// [`list_volumes`]'s doc comment for why `in_use` fails open, not closed.
+fn build_volumes(
+    raw: Vec<RawVolume>,
+    df_by_name: &HashMap<String, RawSystemDfVolume>,
+    inspect_by_name: &HashMap<String, RawVolumeInspect>,
+) -> Vec<Volume> {
+    raw.into_iter()
+        .map(|v| {
+            let df = df_by_name.get(&v.name);
+            let size = df.and_then(|d| d.size.clone());
+            let size_bytes = size.as_deref().and_then(parse_size_bytes);
+            let containers = df.and_then(|d| d.links.as_deref()).and_then(parse_links);
+            let inspect = inspect_by_name.get(&v.name);
+            let labels = inspect.and_then(|i| i.labels.clone()).unwrap_or_default();
+            let anonymous = labels.contains_key("com.docker.volume.anonymous");
+            let compose_project = labels.get("com.docker.compose.project").cloned();
+            let created_at = inspect.and_then(|i| i.created_at.clone());
+            Volume {
+                name: v.name,
+                driver: v.driver,
+                mountpoint: v.mountpoint,
+                size,
+                size_bytes,
+                // `containers` is only `None` when the `system df -v` lookup
+                // failed outright (see doc comment on `in_use`); a
+                // successfully-parsed "0" is a real zero, i.e. genuinely
+                // unused, and must be distinct from "we don't know".
+                in_use: containers.unwrap_or(0) > 0,
+                containers,
+                anonymous,
+                compose_project,
+                created_at,
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -710,6 +832,21 @@ pub async fn pull_image(
     exec::run_streaming(&app, "docker", &args, &profile, "pull").await
 }
 
+/// Lists every named volume with size/in-use/source info (bug fix: the old
+/// implementation called `system df -v --format '{{json .}}'`, which prints
+/// **one** object for the whole report `{Images:[...], Containers:[...],
+/// Volumes:[...]}`, not JSON-lines — so `run_json_lines`, which expects one
+/// JSON value per line, silently produced zero rows and every volume's size
+/// showed "—". The fix asks docker to render just the `Volumes` array
+/// (`{{json .Volumes}}`), which *is* one JSON array of per-volume objects.
+///
+/// `in_use`/`containers` come from `system df -v`'s `Links` field (verified
+/// live: the same call also carries `Size`). If that lookup fails outright,
+/// every volume's `containers` is `None` and `in_use` defaults to `false`
+/// (fails open, i.e. looks unused) rather than blocking the delete/prune UI
+/// on an unrelated docker command failing — the destructive actions
+/// themselves (`remove_volume`, `prune`) still go through docker directly,
+/// which independently refuses to remove a volume actually in use.
 #[tauri::command]
 pub async fn list_volumes(
     app: AppHandle,
@@ -723,26 +860,58 @@ pub async fn list_volumes(
     )
     .await?;
 
-    // best-effort size lookup; on any failure every volume's size is None.
-    let sizes: HashMap<String, String> = exec::run_json_lines::<RawSystemDfVolume>(
-        "docker",
-        &["-H", &socket, "system", "df", "-v", "--format", "{{json .}}"],
-    )
-    .await
-    .unwrap_or_default()
-    .into_iter()
-    .filter_map(|v| v.size.map(|s| (v.name, s)))
-    .collect();
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    Ok(raw
-        .into_iter()
-        .map(|v| Volume {
-            size: sizes.get(&v.name).cloned(),
-            name: v.name,
-            driver: v.driver,
-            mountpoint: v.mountpoint,
-        })
-        .collect())
+    // best-effort size/links lookup; on any failure every volume's
+    // size/containers stay None (see doc comment above).
+    let df_stdout = exec::run_capture_stdout(
+        "docker",
+        &["-H", &socket, "system", "df", "-v", "--format", "{{json .Volumes}}"],
+    )
+    .await;
+    let df_by_name = parse_system_df_volumes(&df_stdout);
+
+    // best-effort createdAt/labels lookup, batched in one `volume inspect`
+    // call (mirrors `labels_via_inspect` for containers).
+    let names: Vec<&str> = raw.iter().map(|v| v.name.as_str()).collect();
+    let inspect_stdout = {
+        let mut args = vec!["-H", &socket, "volume", "inspect"];
+        args.extend(names.iter().copied());
+        exec::run_capture_stdout("docker", &args).await
+    };
+    let inspect_by_name = parse_volume_inspect(&inspect_stdout);
+
+    Ok(build_volumes(raw, &df_by_name, &inspect_by_name))
+}
+
+/// Parse `docker system df -v --format '{{json .Volumes}}'`'s stdout (one
+/// JSON array of volume entries) into a name-keyed map. Empty/unparseable
+/// input (including the pre-fix single-object shape, for defensive
+/// robustness) yields an empty map rather than an error.
+fn parse_system_df_volumes(stdout: &str) -> HashMap<String, RawSystemDfVolume> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return HashMap::new();
+    }
+    let Ok(entries) = serde_json::from_str::<Vec<RawSystemDfVolume>>(trimmed) else {
+        return HashMap::new();
+    };
+    entries.into_iter().map(|v| (v.name.clone(), v)).collect()
+}
+
+/// Parse `docker volume inspect <names...>`'s stdout (one JSON array) into a
+/// name-keyed map. Empty/unparseable input yields an empty map.
+fn parse_volume_inspect(stdout: &str) -> HashMap<String, RawVolumeInspect> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return HashMap::new();
+    }
+    let Ok(entries) = serde_json::from_str::<Vec<RawVolumeInspect>>(trimmed) else {
+        return HashMap::new();
+    };
+    entries.into_iter().map(|v| (v.name.clone(), v)).collect()
 }
 
 #[tauri::command]
@@ -769,7 +938,14 @@ pub async fn prune(
     let args: Vec<&str> = match what.as_str() {
         "containers" => vec!["-H", &socket, "container", "prune", "-f"],
         "images" => vec!["-H", &socket, "image", "prune", "-a", "-f"],
+        // Anonymous unused volumes only — docker's own default since 23.0.
         "volumes" => vec!["-H", &socket, "volume", "prune", "-f"],
+        // ALL unused volumes, including named ones (bug fix: named leftover
+        // volumes, e.g. from `compose down` without `-v`, were never removed
+        // by "Prune unused" because plain `volume prune` never touches named
+        // volumes at all — verified live on docker server 27.4.0. `-a` is
+        // the documented flag to include them too).
+        "volumes-all" => vec!["-H", &socket, "volume", "prune", "-a", "-f"],
         "system" => vec!["-H", &socket, "system", "prune", "-f"],
         other => return Err(format!("invalid prune target: {other}")),
     };
@@ -1125,5 +1301,279 @@ mod tests {
     fn split_command_empty() {
         assert!(split_command("").is_empty());
         assert!(split_command("   ").is_empty());
+    }
+
+    // ---- Volumes (bug fix: sizes, prune -a, source/in-use/created) ----
+
+    #[test]
+    fn parse_size_bytes_decimal_units() {
+        // Docker's `system df` uses SI (1000-based) units, verified against
+        // real output on docker server 27.4.0: "136.5MB", "678.3MB", etc.
+        assert_eq!(parse_size_bytes("0B"), Some(0));
+        assert_eq!(parse_size_bytes("1.831kB"), Some(1831));
+        assert_eq!(parse_size_bytes("136.5MB"), Some(136_500_000));
+        assert_eq!(parse_size_bytes("1.2GB"), Some(1_200_000_000));
+        assert_eq!(parse_size_bytes("47.99MB"), Some(47_990_000));
+    }
+
+    #[test]
+    fn parse_size_bytes_na_is_none() {
+        assert_eq!(parse_size_bytes("N/A"), None);
+        assert_eq!(parse_size_bytes("n/a"), None);
+        assert_eq!(parse_size_bytes(""), None);
+    }
+
+    #[test]
+    fn parse_size_bytes_rejects_unknown_unit() {
+        assert_eq!(parse_size_bytes("136.5XB"), None);
+        assert_eq!(parse_size_bytes("garbage"), None);
+    }
+
+    #[test]
+    fn parse_links_basic() {
+        assert_eq!(parse_links("0"), Some(0));
+        assert_eq!(parse_links("3"), Some(3));
+        assert_eq!(parse_links("N/A"), None);
+        assert_eq!(parse_links(""), None);
+    }
+
+    #[test]
+    fn parse_system_df_volumes_realistic_array() {
+        // Captured live: `docker system df -v --format '{{json .Volumes}}'`
+        // on docker server 27.4.0 against a colima `default` docker socket —
+        // ONE JSON array of volume objects, unlike the old (buggy)
+        // `--format '{{json .}}'` call, which prints a single report object
+        // with `Images`/`Containers`/`Volumes` sub-arrays and made
+        // `run_json_lines` silently parse zero rows.
+        let stdout = concat!(
+            r#"[{"Availability":"N/A","Driver":"local","Group":"N/A","Labels":"com.docker.compose.project=logbat","#,
+            r#""Links":"0","Mountpoint":"/var/lib/docker/volumes/logbat_redis_data/_data","Name":"logbat_redis_data","Scope":"local","Size":"1.831kB","Status":"N/A"},"#,
+            r#"{"Availability":"N/A","Driver":"local","Group":"N/A","Labels":"","Links":"0","Mountpoint":"/var/lib/docker/volumes/setur-nuget/_data","Name":"setur-nuget","Scope":"local","Size":"0B","Status":"N/A"}]"#,
+        );
+        let map = parse_system_df_volumes(stdout);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["logbat_redis_data"].size.as_deref(), Some("1.831kB"));
+        assert_eq!(map["logbat_redis_data"].links.as_deref(), Some("0"));
+        assert_eq!(map["setur-nuget"].size.as_deref(), Some("0B"));
+    }
+
+    #[test]
+    fn parse_system_df_volumes_old_single_object_shape_is_ignored() {
+        // Defensive: if a differently-formatted call ever produced the old
+        // single-report-object shape again, this must yield an empty map
+        // (not a parse panic and not a false single-volume row).
+        let stdout = r#"{"Images":[],"Containers":[],"Volumes":[]}"#;
+        assert!(parse_system_df_volumes(stdout).is_empty());
+    }
+
+    #[test]
+    fn parse_system_df_volumes_empty_stdout() {
+        assert!(parse_system_df_volumes("").is_empty());
+        assert!(parse_system_df_volumes("   ").is_empty());
+    }
+
+    #[test]
+    fn parse_volume_inspect_realistic_array() {
+        // Captured live: `docker volume inspect <names...>` on docker
+        // server 27.4.0 — labels are a real JSON object (or `null` for a
+        // volume with no labels, e.g. `laya-smoke-hf`/`setur-nuget` below),
+        // never the comma-joined string `docker ps`/`volume ls` use.
+        let stdout = concat!(
+            r#"[{"CreatedAt":"2025-10-25T14:02:03+03:00","Driver":"local","Labels":{"com.docker.compose.config-hash":"abc","#,
+            r#""com.docker.compose.project":"alperenselcuk","com.docker.compose.version":"2.36.2","com.docker.compose.volume":"db_data"},"#,
+            r#""Mountpoint":"/var/lib/docker/volumes/alperenselcuk_db_data/_data","Name":"alperenselcuk_db_data","Options":null,"Scope":"local"},"#,
+            r#"{"CreatedAt":"2026-09-26T12:29:20+03:00","Driver":"local","Labels":null,"Mountpoint":"/var/lib/docker/volumes/laya-smoke-hf/_data","Name":"laya-smoke-hf","Options":null,"Scope":"local"}]"#,
+        );
+        let map = parse_volume_inspect(stdout);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map["alperenselcuk_db_data"].created_at.as_deref(), Some("2025-10-25T14:02:03+03:00"));
+        assert_eq!(
+            map["alperenselcuk_db_data"].labels.as_ref().unwrap().get("com.docker.compose.project").map(String::as_str),
+            Some("alperenselcuk")
+        );
+        assert_eq!(map["laya-smoke-hf"].labels, None);
+    }
+
+    #[test]
+    fn parse_volume_inspect_empty_stdout() {
+        assert!(parse_volume_inspect("").is_empty());
+    }
+
+    #[test]
+    fn build_volumes_named_compose_leftover_is_unused_and_not_anonymous() {
+        // Reproduces the bug report exactly: a named volume left over from
+        // `compose down` without `-v` — has a compose project label, zero
+        // container links, and no `com.docker.volume.anonymous` label.
+        let raw = vec![RawVolume {
+            name: "alperenselcuk_db_data".into(),
+            driver: "local".into(),
+            mountpoint: "/var/lib/docker/volumes/alperenselcuk_db_data/_data".into(),
+        }];
+        let mut df = HashMap::new();
+        df.insert(
+            "alperenselcuk_db_data".to_string(),
+            RawSystemDfVolume {
+                name: "alperenselcuk_db_data".into(),
+                size: Some("136.5MB".into()),
+                links: Some("0".into()),
+            },
+        );
+        let mut labels = HashMap::new();
+        labels.insert("com.docker.compose.project".to_string(), "alperenselcuk".to_string());
+        let mut inspect = HashMap::new();
+        inspect.insert(
+            "alperenselcuk_db_data".to_string(),
+            RawVolumeInspect {
+                name: "alperenselcuk_db_data".into(),
+                created_at: Some("2025-10-25T14:02:03+03:00".into()),
+                labels: Some(labels),
+            },
+        );
+
+        let volumes = build_volumes(raw, &df, &inspect);
+        assert_eq!(volumes.len(), 1);
+        let v = &volumes[0];
+        assert_eq!(v.size.as_deref(), Some("136.5MB"));
+        assert_eq!(v.size_bytes, Some(136_500_000));
+        assert_eq!(v.containers, Some(0));
+        assert!(!v.in_use);
+        assert!(!v.anonymous);
+        assert_eq!(v.compose_project.as_deref(), Some("alperenselcuk"));
+        assert_eq!(v.created_at.as_deref(), Some("2025-10-25T14:02:03+03:00"));
+    }
+
+    #[test]
+    fn build_volumes_plain_named_volume_no_labels() {
+        // e.g. "laya-smoke-hf" / "setur-nuget" from the bug report: a plain
+        // named volume, never compose-managed, `Labels: null` on inspect.
+        let raw = vec![RawVolume {
+            name: "setur-nuget".into(),
+            driver: "local".into(),
+            mountpoint: "/var/lib/docker/volumes/setur-nuget/_data".into(),
+        }];
+        let mut df = HashMap::new();
+        df.insert(
+            "setur-nuget".to_string(),
+            RawSystemDfVolume { name: "setur-nuget".into(), size: Some("0B".into()), links: Some("0".into()) },
+        );
+        let mut inspect = HashMap::new();
+        inspect.insert(
+            "setur-nuget".to_string(),
+            RawVolumeInspect { name: "setur-nuget".into(), created_at: Some("2026-09-24T10:27:26+03:00".into()), labels: None },
+        );
+
+        let volumes = build_volumes(raw, &df, &inspect);
+        let v = &volumes[0];
+        assert_eq!(v.size_bytes, Some(0));
+        assert!(!v.in_use);
+        assert!(!v.anonymous);
+        assert_eq!(v.compose_project, None);
+    }
+
+    #[test]
+    fn build_volumes_anonymous_volume_detected_via_label() {
+        let raw = vec![RawVolume {
+            name: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".into(),
+            driver: "local".into(),
+            mountpoint: "/var/lib/docker/volumes/.../_data".into(),
+        }];
+        let mut labels = HashMap::new();
+        labels.insert("com.docker.volume.anonymous".to_string(), String::new());
+        let mut inspect = HashMap::new();
+        inspect.insert(
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".to_string(),
+            RawVolumeInspect {
+                name: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".into(),
+                created_at: None,
+                labels: Some(labels),
+            },
+        );
+
+        let volumes = build_volumes(raw, &HashMap::new(), &inspect);
+        assert!(volumes[0].anonymous);
+    }
+
+    #[test]
+    fn build_volumes_in_use_when_links_positive() {
+        let raw = vec![RawVolume { name: "vol1".into(), driver: "local".into(), mountpoint: "/data".into() }];
+        let mut df = HashMap::new();
+        df.insert("vol1".to_string(), RawSystemDfVolume { name: "vol1".into(), size: Some("1MB".into()), links: Some("2".into()) });
+
+        let volumes = build_volumes(raw, &df, &HashMap::new());
+        assert_eq!(volumes[0].containers, Some(2));
+        assert!(volumes[0].in_use);
+    }
+
+    #[test]
+    fn build_volumes_missing_df_entry_leaves_size_and_containers_none_and_not_in_use() {
+        // If `system df -v` fails entirely (empty map), every volume must
+        // fail OPEN (in_use: false, so it isn't blocked from deletion by a
+        // stale/failed lookup) while still surfacing containers: None to the
+        // frontend so it can distinguish "known unused" from "unknown".
+        let raw = vec![RawVolume { name: "vol1".into(), driver: "local".into(), mountpoint: "/data".into() }];
+        let volumes = build_volumes(raw, &HashMap::new(), &HashMap::new());
+        assert_eq!(volumes[0].size, None);
+        assert_eq!(volumes[0].size_bytes, None);
+        assert_eq!(volumes[0].containers, None);
+        assert!(!volumes[0].in_use);
+    }
+
+    /// Live, READ-ONLY diagnostic against this machine's running colima
+    /// (profile `default`, docker runtime). Exercises the exact real command
+    /// path `list_volumes` uses (`volume ls` + `system df -v --format
+    /// '{{json .Volumes}}'` + batched `volume inspect`) via the underlying
+    /// async helpers directly, same approach as
+    /// `compose::tests::live_compose_up_and_down` / `k8s::tests::live_colima_k8s_listing`
+    /// (this crate has no `AppHandle`/`State` mock harness for the
+    /// `#[tauri::command]` wrapper itself).
+    ///
+    /// Only ever LISTS volumes — never prunes, removes, or otherwise
+    /// mutates anything. Ignored by default; run with
+    /// `cargo test live_list_volumes_real_colima -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore]
+    async fn live_list_volumes_real_colima() {
+        let profile = "default";
+        let state = AppState::default();
+        let socket = resolve_docker_socket(&state, profile).await;
+        println!("docker socket: {socket}");
+
+        let raw: Vec<RawVolume> =
+            exec::run_json_lines("docker", &["-H", &socket, "volume", "ls", "--format", "{{json .}}"])
+                .await
+                .expect("docker volume ls should succeed against the running colima VM");
+        println!("volume ls: {} volumes", raw.len());
+
+        let df_stdout = exec::run_capture_stdout(
+            "docker",
+            &["-H", &socket, "system", "df", "-v", "--format", "{{json .Volumes}}"],
+        )
+        .await;
+        let df_by_name = parse_system_df_volumes(&df_stdout);
+
+        let names: Vec<&str> = raw.iter().map(|v| v.name.as_str()).collect();
+        let inspect_stdout = if names.is_empty() {
+            String::new()
+        } else {
+            let mut args = vec!["-H", socket.as_str(), "volume", "inspect"];
+            args.extend(names.iter().copied());
+            exec::run_capture_stdout("docker", &args).await
+        };
+        let inspect_by_name = parse_volume_inspect(&inspect_stdout);
+
+        let volumes = build_volumes(raw, &df_by_name, &inspect_by_name);
+        println!("\nname | size | inUse | containers | anonymous | composeProject | createdAt");
+        for v in &volumes {
+            println!(
+                "{} | {} | {} | {} | {} | {} | {}",
+                v.name,
+                v.size.as_deref().unwrap_or("—"),
+                v.in_use,
+                v.containers.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string()),
+                v.anonymous,
+                v.compose_project.as_deref().unwrap_or("—"),
+                v.created_at.as_deref().unwrap_or("—"),
+            );
+        }
     }
 }

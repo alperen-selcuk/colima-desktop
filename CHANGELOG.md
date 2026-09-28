@@ -2,6 +2,27 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Volume sizes always showed "—": `list_volumes` asked docker for `system df -v --format '{{json .}}'`, which
+  prints one JSON object for the whole report (`Images`/`Containers`/`Volumes` sub-arrays), not JSON-lines —
+  fixed to request `{{json .Volumes}}` (the array) directly.
+- "Prune unused" never removed named volumes (e.g. leftovers from `compose down` without `-v`): plain
+  `docker volume prune -f` has only removed anonymous unused volumes since Docker 23. The Volumes page's prune
+  dialog now offers both scopes explicitly.
+
+### Added
+
+- Redesigned Volumes page matching the Containers page's look: stat tiles (count, total size, unused count,
+  reclaimable size), a Source column (compose project / named / anonymous), an In use column, and a Created
+  column, sortable by name/size/created.
+- Volumes now report `containers` (how many reference them), `inUse`, `anonymous`, `composeProject` and
+  `createdAt`, from a batched `docker volume inspect` alongside `system df -v`.
+- Prune dialog previews exactly which volumes a prune would remove (with sizes and a total) before confirming,
+  and requires typing "delete" when the broader scope would remove named volumes.
+
 ## [0.1.3] - 2026-09-28
 
 ### Added

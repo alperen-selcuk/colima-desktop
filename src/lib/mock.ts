@@ -377,10 +377,124 @@ export const mockImages: Image[] = [
   { id: "sha256:5e6f7a8b9c0d", repository: "<none>", tag: "<none>", size: "98MB", createdSince: "2 months ago", createdAt: isoAgo(60 * 86400_000), inUse: false },
 ];
 
+// Mirrors a real bug report (7 unused named volumes, 5 leftover from
+// `compose down` without `-v`, plus 2 plain named volumes with no compose
+// project), captured live from a colima `default` docker socket (server
+// 27.4.0), plus one anonymous and one in-use volume added for variety so
+// the page's "named"/"anonymous" badges and "in use" column both have a
+// non-empty case to render in `npm run dev`.
 export const mockVolumes: Volume[] = [
-  { name: "myapp_pgdata", driver: "local", mountpoint: "/var/lib/docker/volumes/myapp_pgdata/_data", size: "1.2GB" },
-  { name: "myapp_redis-data", driver: "local", mountpoint: "/var/lib/docker/volumes/myapp_redis-data/_data", size: "12MB" },
-  { name: "orphan-vol-a1b2", driver: "local", mountpoint: "/var/lib/docker/volumes/orphan-vol-a1b2/_data", size: null },
+  {
+    name: "alperenselcuk_db_data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/alperenselcuk_db_data/_data",
+    size: "136.5MB",
+    sizeBytes: 136_500_000,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: "alperenselcuk",
+    createdAt: isoAgo(340 * 86400_000),
+  },
+  {
+    name: "devopschallenge_postgres_data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/devopschallenge_postgres_data/_data",
+    size: "48.27MB",
+    sizeBytes: 48_270_000,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: "devopschallenge",
+    createdAt: isoAgo(114 * 86400_000),
+  },
+  {
+    name: "logbat_postgres_data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/logbat_postgres_data/_data",
+    size: "47.99MB",
+    sizeBytes: 47_990_000,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: "logbat",
+    createdAt: isoAgo(310 * 86400_000),
+  },
+  {
+    name: "logbat_redis_data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/logbat_redis_data/_data",
+    size: "1.831kB",
+    sizeBytes: 1831,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: "logbat",
+    createdAt: isoAgo(310 * 86400_000),
+  },
+  {
+    name: "photo-peek-puzzle-challenge_postgres_data",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/photo-peek-puzzle-challenge_postgres_data/_data",
+    size: "49.31MB",
+    sizeBytes: 49_310_000,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: "photo-peek-puzzle-challenge",
+    createdAt: isoAgo(115 * 86400_000),
+  },
+  // Plain named volumes (not compose-managed) — bug report's other two.
+  {
+    name: "laya-smoke-hf",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/laya-smoke-hf/_data",
+    size: "678.3MB",
+    sizeBytes: 678_300_000,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: null,
+    createdAt: isoAgo(2 * 86400_000),
+  },
+  {
+    name: "setur-nuget",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/setur-nuget/_data",
+    size: "0B",
+    sizeBytes: 0,
+    containers: 0,
+    inUse: false,
+    anonymous: false,
+    composeProject: null,
+    createdAt: isoAgo(4 * 86400_000),
+  },
+  // In-use named volume, for variety (mounted by a container).
+  {
+    name: "myapp_pgdata",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/myapp_pgdata/_data",
+    size: "1.2GB",
+    sizeBytes: 1_200_000_000,
+    containers: 1,
+    inUse: true,
+    anonymous: false,
+    composeProject: "myapp",
+    createdAt: isoAgo(20 * 86400_000),
+  },
+  // Anonymous volume (e.g. an unnamed `docker run -v /data` mount).
+  {
+    name: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+    driver: "local",
+    mountpoint: "/var/lib/docker/volumes/a1b2.../_data",
+    size: "3.4MB",
+    sizeBytes: 3_400_000,
+    containers: 0,
+    inUse: false,
+    anonymous: true,
+    composeProject: null,
+    createdAt: isoAgo(9 * 86400_000),
+  },
 ];
 
 export const mockK8sPods: K8sPod[] = [

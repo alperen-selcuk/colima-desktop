@@ -154,8 +154,15 @@ export interface Image {           // `docker images --format '{{json .}}'`
   inUse: boolean;                  // true if any container (any state) uses this image id or repo:tag
 }
 
-export interface Volume {          // `docker volume ls --format '{{json .}}'`
-  name: string; driver: string; mountpoint: string; size: string | null;
+export interface Volume {          // `docker volume ls` enriched with `system df -v` + batched `volume inspect`
+  name: string; driver: string; mountpoint: string;
+  size: string | null;             // e.g. "136.5MB"; null if the size lookup failed
+  sizeBytes: number | null;        // `size` parsed to bytes (decimal/SI: kB/MB/GB = 1000-based); null if unknown
+  containers: number | null;       // containers referencing this volume; null if the lookup failed
+  inUse: boolean;                  // containers > 0 (fails open to false on lookup failure)
+  anonymous: boolean;              // label com.docker.volume.anonymous present
+  composeProject: string | null;   // label com.docker.compose.project
+  createdAt: string | null;        // docker volume inspect's CreatedAt (RFC3339)
 }
 
 export interface RunOptions {
@@ -210,9 +217,9 @@ export interface OpLog { profile: string; op: string; line: string; }
 | `list_images` | `profile` | `Image[]` | |
 | `remove_image` | `profile, id, force: boolean` | `void` | `docker rmi [-f] id` |
 | `pull_image` | `profile, reference` | `void` | `docker pull ref`, streamed as `colima-op-log` op `"pull"` |
-| `list_volumes` | `profile` | `Volume[]` | size via `docker system df -v --format '{{json .}}'` best-effort, else null |
+| `list_volumes` | `profile` | `Volume[]` | `volume ls` + best-effort `system df -v --format '{{json .Volumes}}'` (size/containers; **must** target the `.Volumes` array, not `{{json .}}'s single report object — see docker.rs doc comment) + best-effort batched `volume inspect <names...>` (createdAt/labels, real JSON map) |
 | `remove_volume` | `profile, name` | `void` | `docker volume rm name` |
-| `prune` | `profile, what: "containers"\|"images"\|"volumes"\|"system"` | `string` (output) | `docker <what> prune -f` (`images` adds `-a`; `system` = `docker system prune -f`) |
+| `prune` | `profile, what: "containers"\|"images"\|"volumes"\|"volumes-all"\|"system"` | `string` (output) | `docker <what> prune -f` (`images` adds `-a`; `volumes` = anonymous-only, docker's own default since 23.0; `volumes-all` adds `-a` to also remove named unused volumes; `system` = `docker system prune -f`) |
 | `k8s_namespaces` | `profile` | `string[]` | `kubectl --context c get ns -o json` |
 | `k8s_pods` | `profile, namespace: string \| null` | `K8sPod[]` | null → `-A` |
 | `k8s_deployments` | `profile, namespace: string \| null` | `K8sDeployment[]` | |
@@ -264,7 +271,15 @@ Pages:
 1. **Machines**: card per profile — name, status dot, runtime, arch, CPU/Mem/Disk, k8s badge, address. Actions: Start (opens Start dialog), Stop, Restart, Delete (confirm by typing profile name), Terminal (ssh). "New machine" button → same Start dialog with editable name. Start dialog fields prefilled from `profile_config` (or defaults cpu 2, memory 2, disk 100, runtime docker, vmType vz on macOS / qemu on linux, arch host): CPU, Memory (GiB), Disk (GiB, warn it can't shrink), Runtime (docker|containerd|incus), VM type (vz|qemu; hide vz on linux), Arch, Mount type (sshfs|9p|virtiofs), Rosetta (macOS+vz only), Network address, Kubernetes toggle + version, Activate context toggle, mounts list editor. While an op runs, an **Operation console** drawer at bottom shows streamed `colima-op-log` lines with auto-scroll, can be collapsed.
 2. **Containers**: search box, "Only running" toggle, "Run container" button, Prune menu. Table grouped by compose project (collapsible group rows, aggregate state). Columns: state dot, Name, Image, Status, Ports (clickable links opening browser via opener), CPU%, Mem (from stats), actions (start/stop, restart, pause, terminal, delete). Row click → right-side detail panel with tabs: **Logs** (live stream, auto-scroll toggle, search filter, clear, ANSI stripped), **Inspect** (pretty JSON, collapsible or preformatted), **Stats**. When runtime ≠ docker: empty state explaining container view needs docker runtime.
 3. **Images**: search, Pull button (dialog; streams output into op console), table: Repository, Tag, ID (short), Created, Size, In-use badge; actions: Run (opens Run dialog prefilled), Delete (force when in use with confirm). Prune unused.
-4. **Volumes**: table name, driver, size, mountpoint; delete; prune.
+4. **Volumes**: Docker Engine-styled header with stat tiles (volume count, total size, unused count, reclaimable
+   size); table columns Name / Source (compose project badge, "named", or "anonymous") / Size / In use (container
+   count or "Unused") / Created (relative age), sortable by name/size/created; row delete (confirm; disabled with
+   an explanation while in use). "Prune…" opens a dialog with two scopes — "Unused anonymous volumes" (`volumes`)
+   and "All unused volumes, including named" (`volumes-all`) — previewing exactly which volumes (name, source,
+   size) the chosen scope would remove, computed client-side as `!inUse && (all || anonymous)`; a data-loss
+   warning and typing `delete` are required before confirming the `all` scope when it includes named volumes; an
+   empty preview disables the button ("Nothing to prune"). After pruning, a toast shows docker's own output
+   ("Total reclaimed space: …") and the list refetches.
 5. **Kubernetes**: if `status.kubernetes` false → empty state with "Enable Kubernetes" (calls `kubernetes_action start`, shows op console; note text: "To keep Kubernetes enabled across restarts, enable it in the machine's Start settings") . If enabled: header with context name `colima[-p]`, namespace selector (All + list), Reset / Disable menu (confirm). Tabs: **Pods** (name, ns, status colored, ready, restarts, age, node; actions logs, shell, describe, yaml, delete), **Deployments** (ready, up-to-date, available, age, images; actions scale (number input dialog), restart, describe, yaml), **Services** (type, cluster IP, external IP, ports, age), **Nodes** (status, roles, version, IP, OS, cpu/mem capacity). Detail drawer shows logs (streaming, container selector) / describe / yaml as monospaced text.
 Relative ages computed client-side from ISO timestamps (e.g. `5m`, `3h`, `2d`).
 
