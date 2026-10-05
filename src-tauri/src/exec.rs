@@ -256,9 +256,58 @@ pub async fn run_streaming_with_env(
     if status.success() {
         Ok(())
     } else {
-        let joined: Vec<String> = tail.into_iter().collect();
-        Err(joined.join("\n"))
+        let lines: Vec<String> = tail.into_iter().collect();
+        Err(friendly_error(&lines, cfg!(target_os = "macos")))
     }
+}
+
+/// Extract the value of `msg="..."` from a logfmt-style line (handles `\"` escapes).
+fn extract_msg(line: &str) -> Option<String> {
+    let start = line.find("msg=\"")? + 5;
+    let mut out = String::new();
+    let mut chars = line[start..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some('n') => out.push(' '),
+                Some(o) => {
+                    out.push('\\');
+                    out.push(o);
+                }
+                None => break,
+            },
+            '"' => return Some(out),
+            _ => out.push(c),
+        }
+    }
+    None
+}
+
+/// Turn the last output lines of a failed colima op into a user-facing message.
+/// Prefers the `msg` of the last `level=fatal` line (else last `level=error`),
+/// maps known cases to actionable hints, and falls back to the raw lines.
+pub(crate) fn friendly_error(lines: &[String], macos: bool) -> String {
+    let find = |level: &str| {
+        let needle = format!("level={level}");
+        lines
+            .iter()
+            .rev()
+            .find(|l| l.contains(&needle))
+            .and_then(|l| extract_msg(l))
+    };
+    let Some(msg) = find("fatal").or_else(|| find("error")) else {
+        return lines.join("\n");
+    };
+    if msg.contains("dependency check failed for docker") && msg.contains("docker not found") {
+        return if macos {
+            "Docker CLI not found. Install it with `brew install docker`, or if it is installed but unlinked run `brew link docker`.".to_string()
+        } else {
+            "Docker CLI not found. Install your distribution's docker CLI package (e.g. `docker-ce-cli` or `docker.io`) and make sure `docker` is on your PATH.".to_string()
+        };
+    }
+    msg
 }
 
 #[cfg(test)]
@@ -298,6 +347,35 @@ mod tests {
         let input = "not json\n";
         let result: Result<Vec<Item>, String> = parse_json_lines(input);
         assert!(result.is_err());
+    }
+
+    const DOCKER_LINE: &str = "time=\"2026-10-06T10:00:00+03:00\" level=info msg=\"starting colima\" profile=default\ntime=\"2026-10-06T10:00:01+03:00\" level=fatal msg=\"dependency check failed for docker: docker not found, run 'brew install docker' to install\"";
+
+    fn lines(s: &str) -> Vec<String> {
+        s.lines().map(String::from).collect()
+    }
+
+    #[test]
+    fn friendly_error_maps_missing_docker() {
+        let m = friendly_error(&lines(DOCKER_LINE), true);
+        assert!(m.starts_with("Docker CLI not found. Install it with `brew install docker`"));
+        assert!(m.contains("brew link docker"));
+        let l = friendly_error(&lines(DOCKER_LINE), false);
+        assert!(l.contains("distribution"));
+        assert!(!l.contains("brew"));
+    }
+
+    #[test]
+    fn friendly_error_extracts_fatal_then_error_msg() {
+        let fatal = "level=error msg=\"minor\"\nlevel=fatal msg=\"boom \\\"x\\\"\" a=b";
+        assert_eq!(friendly_error(&lines(fatal), true), "boom \"x\"");
+        let err = "level=info msg=\"hi\"\nlevel=error msg=\"bad thing\"\nlevel=info msg=\"after\"";
+        assert_eq!(friendly_error(&lines(err), true), "bad thing");
+    }
+
+    #[test]
+    fn friendly_error_falls_back_to_raw_lines() {
+        assert_eq!(friendly_error(&lines("plain\nlines"), true), "plain\nlines");
     }
 
     #[test]
