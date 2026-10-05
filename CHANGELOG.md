@@ -2,6 +2,16 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.0] - 2026-10-06
+
+### Fixed
+
+- **Friendly lifecycle errors**: when `colima start/restart` fails, the UI now shows the `msg` of the fatal/error
+  log line instead of raw log output, with actionable hints for known cases (e.g. missing Docker CLI). The full
+  lines remain in the operation log.
+- **Config validation false warnings**: an empty or null value for `runtime`, `vmType`, `arch`, `mountType`,
+  `network.mode`, `portForwarder` and `modelRunner` means "use colima's default" and no longer warns.
+
 ## [0.1.5] - 2026-09-28
 
 ### Added

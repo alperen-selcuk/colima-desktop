@@ -302,6 +302,10 @@ fn check_enum_warning(
     if is_null(value) {
         return;
     }
+    // Empty string means "use colima's default".
+    if matches!(value, serde_yaml::Value::String(s) if s.is_empty()) {
+        return;
+    }
     let serde_yaml::Value::String(s) = value else {
         // Wrong type entirely is still just a string field to colima's
         // unmarshal step at this key, but a non-scalar can't round-trip as
@@ -842,6 +846,15 @@ mod validation_tests {
 
     fn warnings_for(yaml: &str) -> Vec<ConfigIssue> {
         issues_for(yaml).into_iter().filter(|i| i.severity == IssueSeverity::Warning).collect()
+    }
+
+    #[test]
+    fn enum_fields_accept_empty_and_null() {
+        let yaml = "runtime: \"\"\nvmType: \"\"\narch: \"\"\nmountType: \"\"\nportForwarder: \"\"\nmodelRunner: \"\"\nnetwork:\n  mode: \"\"\n";
+        assert!(warnings_for(yaml).is_empty());
+        let yaml = "runtime:\nvmType: null\narch: ~\nmountType:\nportForwarder:\nmodelRunner:\nnetwork:\n  mode:\n";
+        assert!(warnings_for(yaml).is_empty());
+        assert_eq!(warnings_for("vmType: bogus\n").len(), 1);
     }
 
     // --- int fields ---------------------------------------------------
