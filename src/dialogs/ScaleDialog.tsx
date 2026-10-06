@@ -7,6 +7,7 @@ import { useToast } from "../components/Toasts";
 interface ScaleDialogProps {
   open: boolean;
   profile: string;
+  kind: "deployment" | "statefulset";
   namespace: string;
   name: string;
   currentReplicas: number;
@@ -14,7 +15,7 @@ interface ScaleDialogProps {
   onScaled: () => void;
 }
 
-export function ScaleDialog({ open, profile, namespace, name, currentReplicas, onClose, onScaled }: ScaleDialogProps) {
+export function ScaleDialog({ open, profile, kind, namespace, name, currentReplicas, onClose, onScaled }: ScaleDialogProps) {
   const toast = useToast();
   const [replicas, setReplicas] = useState(currentReplicas);
   const [busy, setBusy] = useState(false);
@@ -26,7 +27,7 @@ export function ScaleDialog({ open, profile, namespace, name, currentReplicas, o
   const handleScale = async () => {
     setBusy(true);
     try {
-      await api.k8sScale(profile, namespace, name, replicas);
+      await api.k8sScale(profile, kind, namespace, name, replicas);
       toast.success(`Scaled ${name} to ${replicas} replicas`);
       onScaled();
       onClose();

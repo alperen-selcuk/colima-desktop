@@ -162,11 +162,27 @@ export interface K8sPod {
   node: string | null;
   podIp: string | null;
   containers: string[];
+  /** v0.2.5: declared container ports (port-forward dialog). */
+  ports: PodPort[];
+  /** v0.2.5: `metadata.labels` (Service selector dropdown). */
+  labels: Record<string, string>;
   // §6.6: sum over regular containers; null when no container sets it.
   cpuRequestMilli: number | null;
   cpuLimitMilli: number | null;
   memRequestBytes: number | null;
   memLimitBytes: number | null;
+}
+
+export interface PodPort {
+  name: string | null;
+  containerPort: number;
+  protocol: string;
+}
+
+export interface ServicePort {
+  name: string | null;
+  port: number;
+  protocol: string;
 }
 
 export interface K8sDeployment {
@@ -178,6 +194,51 @@ export interface K8sDeployment {
   replicas: number;
   createdAt: string;
   images: string[];
+  /** `spec.template.metadata.labels` (v0.2.5). */
+  podLabels: Record<string, string>;
+}
+
+/** v0.2.5 */
+export interface K8sStatefulSet {
+  name: string;
+  namespace: string;
+  ready: string; // "2/3"
+  replicas: number;
+  serviceName: string;
+  images: string[];
+  createdAt: string;
+  podLabels: Record<string, string>;
+}
+
+/** v0.2.5 */
+export interface K8sDaemonSet {
+  name: string;
+  namespace: string;
+  desired: number;
+  current: number;
+  ready: number;
+  available: number;
+  images: string[];
+  createdAt: string;
+  podLabels: Record<string, string>;
+}
+
+/** v0.2.5: one `kubectl port-forward` running on 127.0.0.1. */
+export interface PortForward {
+  id: string;
+  profile: string;
+  kind: "pod" | "service";
+  namespace: string;
+  name: string;
+  remotePort: number;
+  localPort: number;
+  url: string;
+}
+
+/** Event `port-forward-ended`. `error` is null for a user-initiated stop. */
+export interface PortForwardEnded {
+  id: string;
+  error: string | null;
 }
 
 export interface K8sService {
@@ -187,6 +248,8 @@ export interface K8sService {
   clusterIp: string;
   externalIp: string | null;
   ports: string;
+  /** v0.2.5: structured `spec.ports[]`. */
+  portList: ServicePort[];
   createdAt: string;
 }
 
@@ -375,6 +438,8 @@ export type TerminalTarget =
 export type K8sKind =
   | "pod"
   | "deployment"
+  | "statefulset"
+  | "daemonset"
   | "service"
   | "configmap"
   | "secret"

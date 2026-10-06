@@ -17,12 +17,14 @@ import type {
   InstalledApp,
   K3sVersionsResponse,
   K8sConfigMap,
+  K8sDaemonSet,
   K8sDeployment,
   K8sIngress,
   K8sNode,
   K8sPod,
   K8sSecret,
   K8sService,
+  K8sStatefulSet,
   MarketplacePrepareResult,
   NodeMetrics,
   PodMetrics,
@@ -526,6 +528,8 @@ export const mockK8sPods: K8sPod[] = [
     node: "colima",
     podIp: "10.42.0.12",
     containers: ["api"],
+    ports: [{ name: "http", containerPort: 80, protocol: "TCP" }],
+    labels: { app: "api" },
     cpuRequestMilli: 100,
     cpuLimitMilli: 500,
     memRequestBytes: 64 * 1024 * 1024,
@@ -542,6 +546,8 @@ export const mockK8sPods: K8sPod[] = [
     node: "colima",
     podIp: "10.42.0.13",
     containers: ["worker"],
+    ports: [],
+    labels: { app: "worker" },
     cpuRequestMilli: 250,
     cpuLimitMilli: 1000,
     memRequestBytes: 128 * 1024 * 1024,
@@ -558,6 +564,8 @@ export const mockK8sPods: K8sPod[] = [
     node: "colima",
     podIp: "10.42.0.15",
     containers: ["web"],
+    ports: [{ name: "http", containerPort: 8080, protocol: "TCP" }],
+    labels: { app: "web" },
     cpuRequestMilli: 100,
     cpuLimitMilli: 200,
     memRequestBytes: 128 * 1024 * 1024,
@@ -574,6 +582,8 @@ export const mockK8sPods: K8sPod[] = [
     node: "colima",
     podIp: "10.42.0.4",
     containers: ["coredns"],
+    ports: [{ name: "http", containerPort: 53, protocol: "TCP" }],
+    labels: { app: "kube-dns" },
     cpuRequestMilli: null,
     cpuLimitMilli: null,
     memRequestBytes: null,
@@ -582,13 +592,21 @@ export const mockK8sPods: K8sPod[] = [
 ];
 
 export const mockK8sDeployments: K8sDeployment[] = [
-  { name: "api", namespace: "default", ready: "1/1", upToDate: 1, available: 1, replicas: 1, createdAt: isoAgo(5 * 86400_000), images: ["myapp/api:1.4.2"] },
-  { name: "worker", namespace: "default", ready: "0/1", upToDate: 1, available: 0, replicas: 1, createdAt: isoAgo(5 * 86400_000), images: ["myapp/worker:1.4.2"] },
+  { name: "api", namespace: "default", ready: "1/1", upToDate: 1, available: 1, replicas: 1, createdAt: isoAgo(5 * 86400_000), images: ["myapp/api:1.4.2"], podLabels: { app: "api" } },
+  { name: "worker", namespace: "default", ready: "0/1", upToDate: 1, available: 0, replicas: 1, createdAt: isoAgo(5 * 86400_000), images: ["myapp/worker:1.4.2"], podLabels: { app: "worker" } },
+];
+
+export const mockK8sStatefulSets: K8sStatefulSet[] = [
+  { name: "db", namespace: "default", ready: "2/3", replicas: 3, serviceName: "db", images: ["postgres:16"], createdAt: isoAgo(3 * 86400_000), podLabels: { app: "db" } },
+];
+
+export const mockK8sDaemonSets: K8sDaemonSet[] = [
+  { name: "log-agent", namespace: "kube-system", desired: 1, current: 1, ready: 1, available: 1, images: ["fluent/fluent-bit:3"], createdAt: isoAgo(4 * 86400_000), podLabels: { app: "log-agent" } },
 ];
 
 export const mockK8sServices: K8sService[] = [
-  { name: "api", namespace: "default", type: "ClusterIP", clusterIp: "10.43.0.55", externalIp: null, ports: "80/TCP", createdAt: isoAgo(5 * 86400_000) },
-  { name: "kubernetes", namespace: "default", type: "ClusterIP", clusterIp: "10.43.0.1", externalIp: null, ports: "443/TCP", createdAt: isoAgo(10 * 86400_000) },
+  { name: "api", namespace: "default", type: "ClusterIP", clusterIp: "10.43.0.55", externalIp: null, ports: "80/TCP", portList: [{ name: "http", port: 80, protocol: "TCP" }], createdAt: isoAgo(5 * 86400_000) },
+  { name: "kubernetes", namespace: "default", type: "ClusterIP", clusterIp: "10.43.0.1", externalIp: null, ports: "443/TCP", portList: [{ name: "https", port: 443, protocol: "TCP" }], createdAt: isoAgo(10 * 86400_000) },
 ];
 
 export const mockK8sNodes: K8sNode[] = [

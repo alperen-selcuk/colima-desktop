@@ -7,6 +7,7 @@ use crate::quantity;
 use crate::validate::{validate_k8s_arg, validate_profile_name};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use tauri::AppHandle;
 
 fn ns_args(namespace: &Option<String>) -> Vec<String> {
@@ -31,11 +32,45 @@ pub struct K8sPod {
     pub node: Option<String>,
     pub pod_ip: Option<String>,
     pub containers: Vec<String>,
+    /// Declared container ports (v0.2.5), for the port-forward dialog.
+    pub ports: Vec<PodPort>,
+    /// `metadata.labels`.
+    pub labels: BTreeMap<String, String>,
     // §6.6: sum over regular containers; null when no container sets it.
     pub cpu_request_milli: Option<i64>,
     pub cpu_limit_milli: Option<i64>,
     pub mem_request_bytes: Option<i64>,
     pub mem_limit_bytes: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PodPort {
+    pub name: Option<String>,
+    pub container_port: i64,
+    pub protocol: String,
+}
+
+/// `spec.containers[].ports[]` flattened (deduplicated by port+protocol).
+fn pod_ports(pod: &Value) -> Vec<PodPort> {
+    let mut out: Vec<PodPort> = Vec::new();
+    for c in pod["spec"]["containers"].as_array().into_iter().flatten() {
+        for p in c["ports"].as_array().into_iter().flatten() {
+            let Some(port) = p["containerPort"].as_i64() else { continue };
+            let protocol = p["protocol"].as_str().unwrap_or("TCP").to_string();
+            if out.iter().any(|e| e.container_port == port && e.protocol == protocol) {
+                continue;
+            }
+            out.push(PodPort { name: p["name"].as_str().map(str::to_string), container_port: port, protocol });
+        }
+    }
+    out
+}
+
+fn labels_of(v: &Value) -> BTreeMap<String, String> {
+    v.as_object()
+        .map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect())
+        .unwrap_or_default()
 }
 
 /// Derive the `kubectl get pods`-style display status for one pod JSON
@@ -149,6 +184,8 @@ fn pod_from_json(pod: &Value) -> K8sPod {
         node: pod["spec"]["nodeName"].as_str().map(str::to_string),
         pod_ip: pod["status"]["podIP"].as_str().map(str::to_string),
         containers,
+        ports: pod_ports(pod),
+        labels: labels_of(&pod["metadata"]["labels"]),
         cpu_request_milli: resources.cpu_request_milli,
         cpu_limit_milli: resources.cpu_limit_milli,
         mem_request_bytes: resources.mem_request_bytes,
@@ -175,19 +212,21 @@ pub struct K8sDeployment {
     pub replicas: i64,
     pub created_at: String,
     pub images: Vec<String>,
+    /// `spec.template.metadata.labels` (v0.2.5; for the Service selector dropdown).
+    pub pod_labels: BTreeMap<String, String>,
+}
+
+fn images_of_template(obj: &Value) -> Vec<String> {
+    obj["spec"]["template"]["spec"]["containers"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|c| c["image"].as_str().map(str::to_string)).collect())
+        .unwrap_or_default()
 }
 
 fn deployment_from_json(dep: &Value) -> K8sDeployment {
     let replicas = dep["spec"]["replicas"].as_i64().unwrap_or(0);
     let ready_replicas = dep["status"]["readyReplicas"].as_i64().unwrap_or(0);
-    let images = dep["spec"]["template"]["spec"]["containers"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|c| c["image"].as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
+    let images = images_of_template(dep);
 
     K8sDeployment {
         name: dep["metadata"]["name"].as_str().unwrap_or_default().to_string(),
@@ -201,6 +240,68 @@ fn deployment_from_json(dep: &Value) -> K8sDeployment {
             .unwrap_or_default()
             .to_string(),
         images,
+        pod_labels: labels_of(&dep["spec"]["template"]["metadata"]["labels"]),
+    }
+}
+
+// ---------- StatefulSets ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sStatefulSet {
+    pub name: String,
+    pub namespace: String,
+    pub ready: String,
+    pub replicas: i64,
+    pub service_name: String,
+    pub images: Vec<String>,
+    pub created_at: String,
+    pub pod_labels: BTreeMap<String, String>,
+}
+
+fn statefulset_from_json(sts: &Value) -> K8sStatefulSet {
+    let replicas = sts["spec"]["replicas"].as_i64().unwrap_or(1);
+    let ready = sts["status"]["readyReplicas"].as_i64().unwrap_or(0);
+    K8sStatefulSet {
+        name: sts["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+        namespace: sts["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+        ready: format!("{ready}/{replicas}"),
+        replicas,
+        service_name: sts["spec"]["serviceName"].as_str().unwrap_or_default().to_string(),
+        images: images_of_template(sts),
+        created_at: sts["metadata"]["creationTimestamp"].as_str().unwrap_or_default().to_string(),
+        pod_labels: labels_of(&sts["spec"]["template"]["metadata"]["labels"]),
+    }
+}
+
+// ---------- DaemonSets ----------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct K8sDaemonSet {
+    pub name: String,
+    pub namespace: String,
+    pub desired: i64,
+    pub current: i64,
+    pub ready: i64,
+    pub available: i64,
+    pub images: Vec<String>,
+    pub created_at: String,
+    pub pod_labels: BTreeMap<String, String>,
+}
+
+fn daemonset_from_json(ds: &Value) -> K8sDaemonSet {
+    let st = &ds["status"];
+    K8sDaemonSet {
+        name: ds["metadata"]["name"].as_str().unwrap_or_default().to_string(),
+        namespace: ds["metadata"]["namespace"].as_str().unwrap_or_default().to_string(),
+        desired: st["desiredNumberScheduled"].as_i64().unwrap_or(0),
+        current: st["currentNumberScheduled"].as_i64().unwrap_or(0),
+        ready: st["numberReady"].as_i64().unwrap_or(0),
+        available: st["numberAvailable"].as_i64().unwrap_or(0),
+        images: images_of_template(ds),
+        created_at: ds["metadata"]["creationTimestamp"].as_str().unwrap_or_default().to_string(),
+        pod_labels: labels_of(&ds["spec"]["template"]["metadata"]["labels"]),
     }
 }
 
@@ -216,7 +317,34 @@ pub struct K8sService {
     pub cluster_ip: String,
     pub external_ip: Option<String>,
     pub ports: String,
+    /// Structured `spec.ports[]` (v0.2.5), for port-forward and the Ingress form.
+    pub port_list: Vec<ServicePort>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ServicePort {
+    pub name: Option<String>,
+    pub port: i64,
+    pub protocol: String,
+}
+
+fn service_port_list(svc: &Value) -> Vec<ServicePort> {
+    svc["spec"]["ports"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|p| {
+                    Some(ServicePort {
+                        name: p["name"].as_str().map(str::to_string),
+                        port: p["port"].as_i64()?,
+                        protocol: p["protocol"].as_str().unwrap_or("TCP").to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Format `spec.ports[]` as `"80:30080/TCP,443/TCP"` (nodePort present ->
@@ -272,6 +400,7 @@ fn service_from_json(svc: &Value) -> K8sService {
         cluster_ip: svc["spec"]["clusterIP"].as_str().unwrap_or_default().to_string(),
         external_ip: external_ip_of(svc),
         ports: format_service_ports(svc),
+        port_list: service_port_list(svc),
         created_at: svc["metadata"]["creationTimestamp"]
             .as_str()
             .unwrap_or_default()
@@ -418,6 +547,32 @@ where
     Ok(items.iter().map(deployment_from_json).collect())
 }
 
+async fn statefulsets_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sStatefulSet>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "statefulsets".to_string()];
+    args.extend(ns_args(namespace));
+    args.push("-o".into());
+    args.push("json".into());
+    let stdout = run(args).await?;
+    Ok(items_from_list(&stdout)?.iter().map(statefulset_from_json).collect())
+}
+
+async fn daemonsets_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sDaemonSet>, String>
+where
+    F: FnOnce(Vec<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<String, String>>,
+{
+    let mut args = vec!["get".to_string(), "daemonsets".to_string()];
+    args.extend(ns_args(namespace));
+    args.push("-o".into());
+    args.push("json".into());
+    let stdout = run(args).await?;
+    Ok(items_from_list(&stdout)?.iter().map(daemonset_from_json).collect())
+}
+
 async fn services_via<F, Fut>(run: F, namespace: &Option<String>) -> Result<Vec<K8sService>, String>
 where
     F: FnOnce(Vec<String>) -> Fut,
@@ -466,6 +621,26 @@ pub async fn k8s_deployments(
 }
 
 #[tauri::command]
+pub async fn k8s_statefulsets(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sStatefulSet>, String> {
+    validate_profile_name(&profile)?;
+    statefulsets_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[tauri::command]
+pub async fn k8s_daemonsets(
+    app: AppHandle,
+    profile: String,
+    namespace: Option<String>,
+) -> Result<Vec<K8sDaemonSet>, String> {
+    validate_profile_name(&profile)?;
+    daemonsets_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }, &namespace).await
+}
+
+#[tauri::command]
 pub async fn k8s_services(
     app: AppHandle,
     profile: String,
@@ -481,13 +656,15 @@ pub async fn k8s_nodes(app: AppHandle, profile: String) -> Result<Vec<K8sNode>, 
     nodes_via(|args| async move { kubeconfig::kubectl(&app, &profile, &args).await }).await
 }
 
-/// The kind whitelist (§6.6): namespaced `pod | deployment | service |
+/// The kind whitelist (§6.6): namespaced `pod | deployment | statefulset | daemonset | service |
 /// configmap | secret | ingress`, cluster-scoped `node` (read-only — no
 /// delete/edit/apply). Validated in the backend before any kubectl call.
 fn validate_kind(kind: &str) -> Result<&'static str, String> {
     match kind {
         "pod" => Ok("pod"),
         "deployment" => Ok("deployment"),
+        "statefulset" => Ok("statefulset"),
+        "daemonset" => Ok("daemonset"),
         "service" => Ok("service"),
         "configmap" => Ok("configmap"),
         "secret" => Ok("secret"),
@@ -548,30 +725,57 @@ pub async fn k8s_delete_pod(app: AppHandle, profile: String, namespace: String, 
     kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
 
+/// Kinds that support `kubectl scale` (v0.2.5).
+fn validate_scalable(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "deployment" => Ok("deployment"),
+        "statefulset" => Ok("statefulset"),
+        other => Err(format!("{other} cannot be scaled")),
+    }
+}
+
+/// Kinds that support `kubectl rollout restart` (v0.2.5).
+fn validate_restartable(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "deployment" => Ok("deployment"),
+        "statefulset" => Ok("statefulset"),
+        "daemonset" => Ok("daemonset"),
+        other => Err(format!("{other} cannot be restarted")),
+    }
+}
+
 #[tauri::command]
 pub async fn k8s_scale(
     app: AppHandle,
     profile: String,
+    kind: String,
     namespace: String,
     name: String,
     replicas: u32,
 ) -> Result<(), String> {
     validate_profile_name(&profile)?;
-    let target = format!("deployment/{name}");
+    let kind = validate_scalable(&kind)?;
+    validate_k8s_arg("namespace", &namespace)?;
+    validate_k8s_arg("name", &name)?;
+    let target = format!("{kind}/{name}");
     let replicas_flag = format!("--replicas={replicas}");
     let args = vec!["scale".to_string(), target, replicas_flag, "-n".to_string(), namespace];
     kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
 
 #[tauri::command]
-pub async fn k8s_restart_deployment(
+pub async fn k8s_restart(
     app: AppHandle,
     profile: String,
+    kind: String,
     namespace: String,
     name: String,
 ) -> Result<(), String> {
     validate_profile_name(&profile)?;
-    let target = format!("deployment/{name}");
+    let kind = validate_restartable(&kind)?;
+    validate_k8s_arg("namespace", &namespace)?;
+    validate_k8s_arg("name", &name)?;
+    let target = format!("{kind}/{name}");
     let args = vec!["rollout".to_string(), "restart".to_string(), target, "-n".to_string(), namespace];
     kubeconfig::kubectl(&app, &profile, &args).await.map(|_| ())
 }
@@ -959,6 +1163,118 @@ pub async fn k8s_apply_yaml(
         }
         Err(e) => Err(e),
     }
+}
+
+// ---------- Create / IngressClasses (v0.2.5) ----------
+
+/// Kinds `k8s_create` accepts (namespaced whitelist, §6.10) -> `kind` field.
+const CREATABLE_KINDS: [&str; 8] =
+    ["Pod", "Deployment", "Service", "Ingress", "StatefulSet", "DaemonSet", "ConfigMap", "Secret"];
+
+/// RFC 1123 DNS label (namespaces): <= 63 chars, lowercase alphanumerics and
+/// `-`, starting and ending alphanumeric.
+fn is_dns_label(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 63
+        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !s.starts_with('-')
+        && !s.ends_with('-')
+}
+
+/// RFC 1123 DNS subdomain (object names): <= 253 chars, dot-separated labels.
+fn is_dns_subdomain(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 253 && s.split('.').all(is_dns_label)
+}
+
+/// Validate a single-document manifest for `k8s_create` and return its
+/// `(kind, name)`. The target `namespace` is forced via `-n`; a different
+/// `metadata.namespace` in the manifest is rejected.
+fn prepare_create(content: &str, namespace: &str) -> Result<(String, String), String> {
+    validate_k8s_arg("namespace", namespace)?;
+    if !is_dns_label(namespace) {
+        return Err(format!("invalid namespace {namespace:?}: use lowercase letters, digits and '-'"));
+    }
+    let doc: serde_yaml::Value = serde_yaml::from_str(content).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("more than one document") {
+            "only a single YAML document can be created at a time".to_string()
+        } else {
+            format!("invalid YAML: {msg}")
+        }
+    })?;
+    let kind = doc.get("kind").and_then(|v| v.as_str()).unwrap_or_default();
+    if !CREATABLE_KINDS.contains(&kind) {
+        return Err(format!(
+            "kind {kind:?} is not supported here (allowed: {})",
+            CREATABLE_KINDS.join(", ")
+        ));
+    }
+    let name = doc.get("metadata").and_then(|m| m.get("name")).and_then(|v| v.as_str()).unwrap_or_default();
+    if !is_dns_subdomain(name) {
+        return Err(format!("invalid metadata.name {name:?}: use lowercase letters, digits, '-' and '.'"));
+    }
+    if let Some(ns) = doc.get("metadata").and_then(|m| m.get("namespace")).and_then(|v| v.as_str()) {
+        if ns != namespace {
+            return Err(format!("metadata.namespace {ns:?} does not match the target namespace {namespace:?}"));
+        }
+    }
+    Ok((kind.to_string(), name.to_string()))
+}
+
+/// Turn kubectl's create errors into short, friendly messages.
+fn friendly_create_error(err: &str, kind: &str, name: &str, namespace: &str) -> String {
+    let lower = err.to_lowercase();
+    if lower.contains("alreadyexists") || lower.contains("already exists") {
+        format!("{kind} \"{name}\" already exists in namespace \"{namespace}\"")
+    } else if lower.contains("namespaces \"") && lower.contains("not found") {
+        format!("Namespace \"{namespace}\" does not exist")
+    } else if lower.contains("forbidden") {
+        format!("Not allowed: {}", err.trim())
+    } else {
+        err.trim().to_string()
+    }
+}
+
+#[tauri::command]
+pub async fn k8s_create(
+    app: AppHandle,
+    profile: String,
+    namespace: String,
+    content: String,
+    dry_run: bool,
+) -> Result<String, String> {
+    validate_profile_name(&profile)?;
+    let (kind, name) = prepare_create(&content, &namespace)?;
+    let mut args = vec![
+        "create".to_string(),
+        "-f".to_string(),
+        "-".to_string(),
+        "-n".to_string(),
+        namespace.clone(),
+    ];
+    if dry_run {
+        args.push("--dry-run=server".to_string());
+    }
+    kubeconfig::kubectl_with_stdin(&app, &profile, &args, &content)
+        .await
+        .map_err(|e| friendly_create_error(&e, &kind, &name, &namespace))
+}
+
+fn ingress_class_names(stdout: &str) -> Result<Vec<String>, String> {
+    let mut names: Vec<String> = items_from_list(stdout)?
+        .iter()
+        .filter_map(|c| c["metadata"]["name"].as_str().map(str::to_string))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+#[tauri::command]
+pub async fn k8s_ingress_classes(app: AppHandle, profile: String) -> Result<Vec<String>, String> {
+    validate_profile_name(&profile)?;
+    let args = vec!["get".to_string(), "ingressclass".to_string(), "-o".to_string(), "json".to_string()];
+    let out = kubeconfig::kubectl(&app, &profile, &args).await?;
+    ingress_class_names(&out)
 }
 
 // ---------- Metrics ----------
@@ -1591,5 +1907,99 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&scratch_dir);
+    }
+
+    // --- v0.2.5 ---------------------------------------------------------------
+
+    #[test]
+    fn statefulset_parse() {
+        let v = json!({
+            "metadata": {"name": "db", "namespace": "default", "creationTimestamp": "2024-01-01T00:00:00Z"},
+            "spec": {"replicas": 3, "serviceName": "db-headless",
+                "template": {"metadata": {"labels": {"app": "db"}}, "spec": {"containers": [{"image": "postgres:16"}]}}},
+            "status": {"readyReplicas": 2}
+        });
+        let s = statefulset_from_json(&v);
+        assert_eq!(s.ready, "2/3");
+        assert_eq!(s.service_name, "db-headless");
+        assert_eq!(s.images, vec!["postgres:16"]);
+        assert_eq!(s.pod_labels.get("app").map(String::as_str), Some("db"));
+    }
+
+    #[test]
+    fn daemonset_parse() {
+        let v = json!({
+            "metadata": {"name": "agent", "namespace": "kube-system"},
+            "spec": {"template": {"spec": {"containers": [{"image": "a:1"}, {"image": "b:2"}]}}},
+            "status": {"desiredNumberScheduled": 2, "currentNumberScheduled": 2, "numberReady": 1, "numberAvailable": 1}
+        });
+        let d = daemonset_from_json(&v);
+        assert_eq!((d.desired, d.current, d.ready, d.available), (2, 2, 1, 1));
+        assert_eq!(d.images.len(), 2);
+    }
+
+    #[test]
+    fn pod_ports_flatten_and_dedupe() {
+        let v = json!({"spec": {"containers": [
+            {"ports": [{"name": "http", "containerPort": 80}, {"containerPort": 80, "protocol": "TCP"}]},
+            {"ports": [{"containerPort": 53, "protocol": "UDP"}]}
+        ]}});
+        let p = pod_ports(&v);
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[0].name.as_deref(), Some("http"));
+        assert_eq!(p[1].protocol, "UDP");
+    }
+
+    #[test]
+    fn service_port_list_parse() {
+        let v = json!({"spec": {"ports": [{"name": "web", "port": 80, "nodePort": 30080}]}});
+        let l = service_port_list(&v);
+        assert_eq!(l, vec![ServicePort { name: Some("web".into()), port: 80, protocol: "TCP".into() }]);
+    }
+
+    #[test]
+    fn kind_whitelist_includes_workloads() {
+        assert!(validate_kind("statefulset").is_ok());
+        assert!(validate_kind("daemonset").is_ok());
+        assert!(validate_kind("job").is_err());
+        assert!(validate_scalable("daemonset").is_err());
+        assert!(validate_scalable("statefulset").is_ok());
+        assert!(validate_restartable("daemonset").is_ok());
+        assert!(validate_restartable("pod").is_err());
+    }
+
+    #[test]
+    fn create_accepts_whitelisted_kind() {
+        let y = "apiVersion: v1\nkind: Pod\nmetadata:\n  name: web-1\n  namespace: dev\nspec: {}\n";
+        assert_eq!(prepare_create(y, "dev").unwrap(), ("Pod".to_string(), "web-1".to_string()));
+    }
+
+    #[test]
+    fn create_rejects_bad_input() {
+        let ok = "kind: Pod\nmetadata:\n  name: p\n";
+        assert!(prepare_create(ok, "-x").is_err());
+        assert!(prepare_create(ok, "Bad_NS").is_err());
+        assert!(prepare_create("kind: Namespace\nmetadata:\n  name: p\n", "default").is_err());
+        assert!(prepare_create("kind: Pod\nmetadata:\n  name: Bad_Name\n", "default").is_err());
+        assert!(prepare_create("kind: Pod\nmetadata: {}\n", "default").is_err());
+        assert!(prepare_create("kind: Pod\nmetadata:\n  name: p\n  namespace: other\n", "default").is_err());
+        assert!(prepare_create("kind: Pod\nmetadata:\n  name: p\n---\nkind: Pod\nmetadata:\n  name: q\n", "default")
+            .unwrap_err()
+            .contains("single"));
+    }
+
+    #[test]
+    fn create_error_friendly() {
+        let e = "Error from server (AlreadyExists): error when creating \"STDIN\": pods \"x\" already exists";
+        assert_eq!(friendly_create_error(e, "Pod", "x", "default"), "Pod \"x\" already exists in namespace \"default\"");
+        let e = "Error from server (NotFound): namespaces \"zzz\" not found";
+        assert_eq!(friendly_create_error(e, "Pod", "x", "zzz"), "Namespace \"zzz\" does not exist");
+        assert_eq!(friendly_create_error("boom\n", "Pod", "x", "d"), "boom");
+    }
+
+    #[test]
+    fn ingress_class_names_sorted() {
+        let out = r#"{"items":[{"metadata":{"name":"traefik"}},{"metadata":{"name":"nginx"}}]}"#;
+        assert_eq!(ingress_class_names(out).unwrap(), vec!["nginx", "traefik"]);
     }
 }

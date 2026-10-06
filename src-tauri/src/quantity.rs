@@ -286,6 +286,8 @@ fn kind_matches(yaml_kind: &str, target_kind: &str) -> bool {
     let expected = match target_kind {
         "pod" => "Pod",
         "deployment" => "Deployment",
+        "statefulset" => "StatefulSet",
+        "daemonset" => "DaemonSet",
         "service" => "Service",
         "configmap" => "ConfigMap",
         "secret" => "Secret",

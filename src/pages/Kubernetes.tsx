@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowRightLeft,
   Boxes,
   ChevronDown,
   ExternalLink,
   Pencil,
+  Plus,
   Rocket,
   RotateCw,
   ScrollText,
@@ -14,7 +16,16 @@ import {
 } from "lucide-react";
 import "../styles/k8s.css";
 import * as api from "../lib/api";
-import type { K8sConfigMap, K8sIngress, K8sKind, K8sNamespacedKind, K8sSecret, ProfileStatus } from "../lib/types";
+import type {
+  K8sConfigMap,
+  K8sIngress,
+  K8sKind,
+  K8sNamespacedKind,
+  K8sSecret,
+  PortForward,
+  ProfileStatus,
+} from "../lib/types";
+import type { CreatableKind } from "../lib/k8sManifests";
 import { relativeAge } from "../lib/format";
 import { ingressAllHosts, ingressHostUrl } from "../lib/k8sView";
 import { Table, Thead, Th, Td, Tr, TableStatusRow } from "../components/Table";
@@ -24,7 +35,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StatusDot, statusTone } from "../components/StatusDot";
 import { useToast } from "../components/Toasts";
 import { K8sDetail } from "../components/K8sDetail";
-import { K8sIcon, KIND_ACCENT_VAR, KIND_ACCENT_SOFT_VAR } from "../components/k8s/K8sIcon";
+import { K8sIcon, KIND_ACCENT_VAR, KIND_ACCENT_SOFT_VAR, KIND_LABEL } from "../components/k8s/K8sIcon";
 import { UsageBar } from "../components/k8s/UsageBar";
 import { K8sDeleteConfirm } from "../components/k8s/K8sDeleteConfirm";
 import { KubeconfigConnectPanel } from "../components/KubeconfigConnectPanel";
@@ -32,19 +43,41 @@ import { KubeconfigHealthNotice } from "../components/KubeconfigHealthNotice";
 import { QueryErrorBanner } from "../components/QueryErrorBanner";
 import { ScaleDialog } from "../dialogs/ScaleDialog";
 import { K8sEditDialog } from "../dialogs/K8sEditDialog";
+import { K8sCreateDialog } from "../dialogs/K8sCreateDialog";
+import { PortForwardDialog, type PortChoice } from "../dialogs/PortForwardDialog";
+import { PortForwardsPanel } from "../components/k8s/PortForwardsPanel";
 import { useDock } from "../lib/useDock";
 
-type Tab = "pods" | "deployments" | "services" | "ingresses" | "configmaps" | "secrets" | "nodes";
+type Tab = "pods" | "deployments" | "statefulsets" | "daemonsets" | "services" | "ingresses" | "configmaps" | "secrets" | "nodes";
 
 const TABS: { id: Tab; label: string; kind: K8sKind }[] = [
   { id: "pods", label: "Pods", kind: "pod" },
   { id: "deployments", label: "Deployments", kind: "deployment" },
+  { id: "statefulsets", label: "StatefulSets", kind: "statefulset" },
+  { id: "daemonsets", label: "DaemonSets", kind: "daemonset" },
   { id: "services", label: "Services", kind: "service" },
   { id: "ingresses", label: "Ingresses", kind: "ingress" },
   { id: "configmaps", label: "ConfigMaps", kind: "configmap" },
   { id: "secrets", label: "Secrets", kind: "secret" },
   { id: "nodes", label: "Nodes", kind: "node" },
 ];
+
+/** Tabs that have a "Create" form (§6.10). */
+const CREATE_KIND: Partial<Record<Tab, CreatableKind>> = {
+  pods: "pod",
+  deployments: "deployment",
+  statefulsets: "statefulset",
+  daemonsets: "daemonset",
+  services: "service",
+  ingresses: "ingress",
+};
+
+interface PortForwardTarget {
+  kind: "pod" | "service";
+  namespace: string;
+  name: string;
+  ports: PortChoice[];
+}
 
 interface KubernetesPageProps {
   profile: string;
@@ -100,7 +133,15 @@ export function KubernetesPage({
   const [selection, setSelection] = useState<Selection | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
-  const [scaleTarget, setScaleTarget] = useState<{ namespace: string; name: string; replicas: number } | null>(null);
+  const [scaleTarget, setScaleTarget] = useState<{
+    kind: "deployment" | "statefulset";
+    namespace: string;
+    name: string;
+    replicas: number;
+  } | null>(null);
+  const [createKind, setCreateKind] = useState<CreatableKind | null>(null);
+  const [pfTarget, setPfTarget] = useState<PortForwardTarget | null>(null);
+  const [pfOpen, setPfOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"reset" | "delete" | null>(null);
   const [healthNoticeDismissed, setHealthNoticeDismissed] = useState(false);
@@ -138,6 +179,48 @@ export function KubernetesPage({
     enabled: enabled && tab === "deployments",
     refetchInterval: enabled && tab === "deployments" ? 3000 : false,
   });
+
+  const statefulSetsQuery = useQuery({
+    queryKey: ["k8sStatefulSets", profile, namespace],
+    queryFn: () => api.k8sStatefulSets(profile, namespace),
+    enabled: enabled && tab === "statefulsets",
+    refetchInterval: enabled && tab === "statefulsets" ? 3000 : false,
+  });
+
+  const daemonSetsQuery = useQuery({
+    queryKey: ["k8sDaemonSets", profile, namespace],
+    queryFn: () => api.k8sDaemonSets(profile, namespace),
+    enabled: enabled && tab === "daemonsets",
+    refetchInterval: enabled && tab === "daemonsets" ? 3000 : false,
+  });
+
+  // Active port-forwards (§6.10): global list from the backend, filtered to
+  // this profile. Polled lightly; `port-forward-ended` also triggers a refetch.
+  const forwardsQuery = useQuery({
+    queryKey: ["k8sPortForwards"],
+    queryFn: () => api.k8sPortForwardList(),
+    enabled,
+    refetchInterval: enabled ? 3000 : false,
+  });
+  const forwards = (forwardsQuery.data ?? []).filter((f) => f.profile === profile);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    void api
+      .onPortForwardEnded((e) => {
+        queryClient.invalidateQueries({ queryKey: ["k8sPortForwards"] });
+        if (e.error) toast.error("Port-forward ended", e.error);
+      })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [queryClient, toast]);
 
   const servicesQuery = useQuery({
     queryKey: ["k8sServices", profile, namespace],
@@ -186,6 +269,8 @@ export function KubernetesPage({
   const counts: Partial<Record<Tab, number>> = {
     pods: podsQuery.data?.length,
     deployments: deploymentsQuery.data?.length,
+    statefulsets: statefulSetsQuery.data?.length,
+    daemonsets: daemonSetsQuery.data?.length,
     services: servicesQuery.data?.length,
     ingresses: ingressesQuery.data?.length,
     configmaps: configMapsQuery.data?.length,
@@ -245,9 +330,9 @@ export function KubernetesPage({
     }
   };
 
-  const handleRestartDeployment = async (ns: string, name: string) => {
+  const handleRestart = async (kind: "deployment" | "statefulset" | "daemonset", ns: string, name: string) => {
     try {
-      await api.k8sRestartDeployment(profile, ns, name);
+      await api.k8sRestart(profile, kind, ns, name);
       toast.success(`Restarting ${name}`);
     } catch (e) {
       toast.error(`Failed to restart ${name}`, String(e));
@@ -299,6 +384,32 @@ export function KubernetesPage({
     );
   }
 
+  const handleStopForward = async (pf: PortForward) => {
+    try {
+      await api.k8sPortForwardStop(pf.id);
+      queryClient.invalidateQueries({ queryKey: ["k8sPortForwards"] });
+    } catch (e) {
+      toast.error("Failed to stop port-forward", String(e));
+    }
+  };
+
+  const handleCopyForward = async (pf: PortForward) => {
+    try {
+      await navigator.clipboard.writeText(pf.url);
+      toast.success("Copied URL", pf.url);
+    } catch (e) {
+      toast.error("Failed to copy", String(e));
+    }
+  };
+
+  const podPortChoices = (ports: { name: string | null; containerPort: number; protocol: string }[]): PortChoice[] =>
+    ports
+      .filter((p) => p.protocol === "TCP")
+      .map((p) => ({ port: p.containerPort, label: p.name ? `${p.containerPort} (${p.name})` : String(p.containerPort) }));
+
+  const servicePortChoices = (ports: { name: string | null; port: number; protocol: string }[]): PortChoice[] =>
+    ports.filter((p) => p.protocol === "TCP").map((p) => ({ port: p.port, label: p.name ? `${p.port} (${p.name})` : String(p.port) }));
+
   const contextName = profile === "default" ? "colima" : `colima-${profile}`;
   const namespaces = namespacesQuery.data ?? [];
   const k3sVersion = nodesQuery.data?.[0]?.version;
@@ -343,7 +454,17 @@ export function KubernetesPage({
               </option>
             ))}
           </select>
-          <div className="ml-auto relative">
+          <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            title="Active port-forwards"
+            onClick={() => setPfOpen((v) => !v)}
+          >
+            <ArrowRightLeft size={12} /> Port-forwards
+            {forwards.length > 0 && <span className="k8s-pf-badge">{forwards.length}</span>}
+          </Button>
+          <div className="relative">
             <Button variant="secondary" size="sm" onClick={() => setMenuOpen((v) => !v)}>
               Manage <ChevronDown size={12} />
             </Button>
@@ -372,7 +493,10 @@ export function KubernetesPage({
               </>
             )}
           </div>
+          </div>
         </div>
+
+        {pfOpen && <PortForwardsPanel forwards={forwards} onStop={handleStopForward} onCopy={handleCopyForward} />}
 
         <div className="flex overflow-x-auto border-b px-2" style={{ borderColor: "var(--border)" }}>
           {TABS.map((t) => {
@@ -415,6 +539,13 @@ export function KubernetesPage({
         )}
 
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-3">
+          {CREATE_KIND[tab] && (
+            <div className="mb-3 flex justify-end">
+              <Button variant="primary" size="sm" onClick={() => setCreateKind(CREATE_KIND[tab] ?? null)}>
+                <Plus size={12} /> Create {KIND_LABEL[CREATE_KIND[tab] as CreatableKind]}
+              </Button>
+            </div>
+          )}
           {tab === "pods" && (
             <>
               {namespacesQuery.isError && (
@@ -442,7 +573,7 @@ export function KubernetesPage({
                     <Th style={{ width: 110 }}>Memory</Th>
                     <Th>Age</Th>
                     <Th>Node</Th>
-                    <Th style={{ width: 160 }}>Actions</Th>
+                    <Th style={{ width: 190 }}>Actions</Th>
                   </Thead>
                   <tbody>
                     {podsQuery.isLoading ? (
@@ -520,6 +651,21 @@ export function KubernetesPage({
                                 <Button
                                   variant="ghost"
                                   size="sm"
+                                  title="Port forward…"
+                                  onClick={() =>
+                                    setPfTarget({
+                                      kind: "pod",
+                                      namespace: p.namespace,
+                                      name: p.name,
+                                      ports: podPortChoices(p.ports),
+                                    })
+                                  }
+                                >
+                                  <ArrowRightLeft size={11} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
                                   title="Edit"
                                   onClick={() => setEditTarget({ kind: "pod", namespace: p.namespace, name: p.name })}
                                 >
@@ -587,11 +733,11 @@ export function KubernetesPage({
                               variant="ghost"
                               size="sm"
                               title="Scale"
-                              onClick={() => setScaleTarget({ namespace: d.namespace, name: d.name, replicas: d.replicas })}
+                              onClick={() => setScaleTarget({ kind: "deployment", namespace: d.namespace, name: d.name, replicas: d.replicas })}
                             >
                               {d.replicas}x
                             </Button>
-                            <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestartDeployment(d.namespace, d.name)}>
+                            <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("deployment", d.namespace, d.name)}>
                               <RotateCw size={11} />
                             </Button>
                             <Button
@@ -619,6 +765,148 @@ export function KubernetesPage({
               </Table>
             ))}
 
+          {tab === "statefulsets" &&
+            (statefulSetsQuery.isError ? (
+              <QueryErrorBanner error={statefulSetsQuery.error} onRetry={() => statefulSetsQuery.refetch()} />
+            ) : (
+              <Table>
+                <Thead>
+                  <Th>Name</Th>
+                  <Th>Namespace</Th>
+                  <Th>Ready</Th>
+                  <Th>Service</Th>
+                  <Th>Age</Th>
+                  <Th>Images</Th>
+                  <Th style={{ width: 160 }}>Actions</Th>
+                </Thead>
+                <tbody>
+                  {statefulSetsQuery.isLoading ? (
+                    <TableStatusRow colSpan={7}>Loading statefulsets…</TableStatusRow>
+                  ) : (statefulSetsQuery.data ?? []).length === 0 ? (
+                    <TableStatusRow colSpan={7}>No statefulsets in {namespace ?? "any namespace"}</TableStatusRow>
+                  ) : (
+                    (statefulSetsQuery.data ?? []).map((d) => (
+                      <Tr
+                        key={`${d.namespace}/${d.name}`}
+                        onClick={() => setSelection({ kind: "statefulset", namespace: d.namespace, name: d.name })}
+                        selected={selection?.kind === "statefulset" && selection.name === d.name && selection.namespace === d.namespace}
+                      >
+                        <Td className="font-medium">{d.name}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{d.namespace}</Td>
+                        <Td className="font-mono-app">{d.ready}</Td>
+                        <Td className="font-mono-app text-[11px]" style={{ color: "var(--text-dim)" }}>
+                          {d.serviceName || "—"}
+                        </Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{relativeAge(d.createdAt)}</Td>
+                        <Td className="font-mono-app text-[11px] truncate max-w-[180px]" style={{ color: "var(--text-faint)" }}>
+                          {d.images.join(", ")}
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Scale"
+                              onClick={() => setScaleTarget({ kind: "statefulset", namespace: d.namespace, name: d.name, replicas: d.replicas })}
+                            >
+                              {d.replicas}x
+                            </Button>
+                            <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("statefulset", d.namespace, d.name)}>
+                              <RotateCw size={11} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Edit"
+                              onClick={() => setEditTarget({ kind: "statefulset", namespace: d.namespace, name: d.name })}
+                            >
+                              <Pencil size={11} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Delete"
+                              onClick={() => setDeleteTarget({ kind: "statefulset", namespace: d.namespace, name: d.name })}
+                            >
+                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                            </Button>
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            ))}
+
+          {tab === "daemonsets" &&
+            (daemonSetsQuery.isError ? (
+              <QueryErrorBanner error={daemonSetsQuery.error} onRetry={() => daemonSetsQuery.refetch()} />
+            ) : (
+              <Table>
+                <Thead>
+                  <Th>Name</Th>
+                  <Th>Namespace</Th>
+                  <Th>Desired</Th>
+                  <Th>Current</Th>
+                  <Th>Ready</Th>
+                  <Th>Available</Th>
+                  <Th>Age</Th>
+                  <Th>Images</Th>
+                  <Th style={{ width: 130 }}>Actions</Th>
+                </Thead>
+                <tbody>
+                  {daemonSetsQuery.isLoading ? (
+                    <TableStatusRow colSpan={9}>Loading daemonsets…</TableStatusRow>
+                  ) : (daemonSetsQuery.data ?? []).length === 0 ? (
+                    <TableStatusRow colSpan={9}>No daemonsets in {namespace ?? "any namespace"}</TableStatusRow>
+                  ) : (
+                    (daemonSetsQuery.data ?? []).map((d) => (
+                      <Tr
+                        key={`${d.namespace}/${d.name}`}
+                        onClick={() => setSelection({ kind: "daemonset", namespace: d.namespace, name: d.name })}
+                        selected={selection?.kind === "daemonset" && selection.name === d.name && selection.namespace === d.namespace}
+                      >
+                        <Td className="font-medium">{d.name}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{d.namespace}</Td>
+                        <Td className="font-mono-app">{d.desired}</Td>
+                        <Td className="font-mono-app">{d.current}</Td>
+                        <Td className="font-mono-app">{d.ready}</Td>
+                        <Td className="font-mono-app">{d.available}</Td>
+                        <Td style={{ color: "var(--text-dim)" }}>{relativeAge(d.createdAt)}</Td>
+                        <Td className="font-mono-app text-[11px] truncate max-w-[180px]" style={{ color: "var(--text-faint)" }}>
+                          {d.images.join(", ")}
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("daemonset", d.namespace, d.name)}>
+                              <RotateCw size={11} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Edit"
+                              onClick={() => setEditTarget({ kind: "daemonset", namespace: d.namespace, name: d.name })}
+                            >
+                              <Pencil size={11} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Delete"
+                              onClick={() => setDeleteTarget({ kind: "daemonset", namespace: d.namespace, name: d.name })}
+                            >
+                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                            </Button>
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </tbody>
+              </Table>
+            ))}
+
           {tab === "services" &&
             (servicesQuery.isError ? (
               <QueryErrorBanner error={servicesQuery.error} onRetry={() => servicesQuery.refetch()} />
@@ -632,7 +920,7 @@ export function KubernetesPage({
                   <Th>External IP</Th>
                   <Th>Ports</Th>
                   <Th>Age</Th>
-                  <Th style={{ width: 90 }}>Actions</Th>
+                  <Th style={{ width: 120 }}>Actions</Th>
                 </Thead>
                 <tbody>
                   {servicesQuery.isLoading ? (
@@ -655,6 +943,21 @@ export function KubernetesPage({
                         <Td style={{ color: "var(--text-dim)" }}>{relativeAge(s.createdAt)}</Td>
                         <Td>
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Port forward…"
+                              onClick={() =>
+                                setPfTarget({
+                                  kind: "service",
+                                  namespace: s.namespace,
+                                  name: s.name,
+                                  ports: servicePortChoices(s.portList),
+                                })
+                              }
+                            >
+                              <ArrowRightLeft size={11} />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1010,6 +1313,36 @@ export function KubernetesPage({
         />
       )}
 
+      {createKind && (
+        <K8sCreateDialog
+          open
+          profile={profile}
+          kind={createKind}
+          currentNamespace={namespace}
+          onClose={() => setCreateKind(null)}
+          onCreated={(k) => {
+            queryClient.invalidateQueries({ queryKey: [tabQueryKey(k), profile] });
+            queryClient.invalidateQueries({ queryKey: ["k8sNamespaces", profile] });
+          }}
+        />
+      )}
+
+      {pfTarget && (
+        <PortForwardDialog
+          open
+          profile={profile}
+          kind={pfTarget.kind}
+          namespace={pfTarget.namespace}
+          name={pfTarget.name}
+          ports={pfTarget.ports}
+          onClose={() => setPfTarget(null)}
+          onStarted={() => {
+            queryClient.invalidateQueries({ queryKey: ["k8sPortForwards"] });
+            setPfOpen(true);
+          }}
+        />
+      )}
+
       <ConfirmDialog
         open={confirmAction === "reset"}
         onClose={() => setConfirmAction(null)}
@@ -1033,11 +1366,12 @@ export function KubernetesPage({
         <ScaleDialog
           open={!!scaleTarget}
           profile={profile}
+          kind={scaleTarget.kind}
           namespace={scaleTarget.namespace}
           name={scaleTarget.name}
           currentReplicas={scaleTarget.replicas}
           onClose={() => setScaleTarget(null)}
-          onScaled={() => queryClient.invalidateQueries({ queryKey: ["k8sDeployments", profile] })}
+          onScaled={() => queryClient.invalidateQueries({ queryKey: [tabQueryKey(scaleTarget.kind), profile] })}
         />
       )}
     </div>
@@ -1050,6 +1384,10 @@ function tabQueryKey(kind: K8sKind): string {
       return "k8sPods";
     case "deployment":
       return "k8sDeployments";
+    case "statefulset":
+      return "k8sStatefulSets";
+    case "daemonset":
+      return "k8sDaemonSets";
     case "service":
       return "k8sServices";
     case "ingress":

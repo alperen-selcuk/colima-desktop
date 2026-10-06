@@ -12,7 +12,7 @@ It lets users:
 - start / stop / restart / delete Colima machines (profiles), and edit every `colima.yaml` option in a form
   ("Start with configuration…");
 - manage Docker containers, images and volumes (logs, inspect, stats, run, pull, prune);
-- enable Kubernetes (k3s) and browse/edit pods, deployments, services, ingresses, configmaps, secrets and nodes,
+- enable Kubernetes (k3s) and browse/edit/create pods, deployments, statefulsets, daemonsets, services, ingresses, configmaps, secrets and nodes,
   including CPU/memory usage from metrics-server;
 - open terminals (host shell, VM, container, pod) in an integrated xterm.js dock.
 
@@ -34,7 +34,7 @@ React UI (src/)  ──invoke()/listen()──▶  Tauri v2 commands (src-tauri/
   `src/lib/types.ts` mirrors the Rust structs **exactly**; `src/lib/api.ts` wraps every command and event.
 - **Browser dev mode:** outside Tauri, `api.ts` falls back to `src/lib/mock.ts`, so `npm run dev` renders every
   page with realistic fake data. Keep mocks in sync when adding commands.
-- **Events:** `colima-op-log`, `profiles-changed`, `log-line`, `log-end`, `terminal-output` (base64), `terminal-exit`.
+- **Events:** `colima-op-log`, `profiles-changed`, `log-line`, `log-end`, `terminal-output` (base64), `terminal-exit`, `port-forward-ended`.
 
 ### Where things live
 
@@ -53,6 +53,7 @@ React UI (src/)  ──invoke()/listen()──▶  Tauri v2 commands (src-tauri/
 | `src-tauri/src/quantity.rs` | Pure helpers: CPU/memory quantity parsing, ingress flattening, secret masking |
 | `src-tauri/src/k3s.rs` | k3s version list (GitHub releases, 24h cache, built-in fallback), colima default version |
 | `src-tauri/src/logs.rs`, `pty.rs`, `terminal.rs` | Log streaming, PTY sessions, terminal command building |
+| `src-tauri/src/portforward.rs` | Long-running `kubectl port-forward` children (start/list/stop, `port-forward-ended` event) |
 | `src-tauri/src/tray.rs`, `validate.rs` | System tray; profile-name / kube-context / k8s-arg validation |
 | `src-tauri/resources/colima-default.yaml` | Upstream colima default template (MIT), fallback for new profiles |
 | `src/App.tsx` | Shell: providers, routing between pages, dialogs, keyboard shortcuts |

@@ -19,6 +19,7 @@ import type {
   KubeconfigInfo,
   OpEnd,
   K8sConfigMap,
+  K8sDaemonSet,
   K8sDeployment,
   K8sIngress,
   K8sKind,
@@ -27,6 +28,7 @@ import type {
   K8sPod,
   K8sSecret,
   K8sService,
+  K8sStatefulSet,
   LogEnd,
   LogEvent,
   LogTarget,
@@ -34,6 +36,8 @@ import type {
   NodeMetrics,
   OpLog,
   PodMetrics,
+  PortForward,
+  PortForwardEnded,
   PreflightResult,
   Profile,
   ProfileConfig,
@@ -112,6 +116,9 @@ export async function listen<T>(
 // Dev-mode mock invoke: minimal, representative responses per command so all
 // pages render without the Rust backend.
 // ---------------------------------------------------------------------------
+
+let mockPfCounter = 0;
+const mockPortForwards: PortForward[] = [];
 
 async function mockInvoke<T>(
   cmd: string,
@@ -199,8 +206,39 @@ async function mockInvoke<T>(
       return `Name: ${args?.name}\nNamespace: ${args?.namespace}\n(mock describe output)` as unknown as T;
     case "k8s_delete_pod":
     case "k8s_scale":
-    case "k8s_restart_deployment":
+    case "k8s_restart":
       return undefined as unknown as T;
+    case "k8s_statefulsets":
+      return mock.mockK8sStatefulSets as unknown as T;
+    case "k8s_daemonsets":
+      return mock.mockK8sDaemonSets as unknown as T;
+    case "k8s_create":
+      return (args?.dryRun ? "(server dry run) created" : "created") as unknown as T;
+    case "k8s_ingress_classes":
+      return [] as unknown as T;
+    case "k8s_port_forward_start": {
+      const pf: PortForward = {
+        id: `mock-pf-${++mockPfCounter}`,
+        profile,
+        kind: args?.kind as "pod" | "service",
+        namespace: args?.namespace as string,
+        name: args?.name as string,
+        remotePort: args?.remotePort as number,
+        localPort: (args?.localPort as number | null) ?? ((args?.remotePort as number) > 1024 ? (args?.remotePort as number) : 8080),
+        url: "",
+      };
+      pf.url = `http://127.0.0.1:${pf.localPort}`;
+      mockPortForwards.push(pf);
+      return pf as unknown as T;
+    }
+    case "k8s_port_forward_list":
+      return [...mockPortForwards] as unknown as T;
+    case "k8s_port_forward_stop": {
+      const i = mockPortForwards.findIndex((f) => f.id === args?.id);
+      if (i >= 0) mockPortForwards.splice(i, 1);
+      mockEmit<PortForwardEnded>("port-forward-ended", { id: args?.id as string, error: null });
+      return undefined as unknown as T;
+    }
     case "k8s_yaml":
       return `apiVersion: v1\nkind: ${args?.kind}\nmetadata:\n  name: ${args?.name}\n` as unknown as T;
     case "k8s_configmaps":
@@ -574,15 +612,62 @@ export function k8sDeletePod(profile: string, namespace: string, name: string): 
 
 export function k8sScale(
   profile: string,
+  kind: "deployment" | "statefulset",
   namespace: string,
   name: string,
   replicas: number,
 ): Promise<void> {
-  return invoke<void>("k8s_scale", { profile, namespace, name, replicas });
+  return invoke<void>("k8s_scale", { profile, kind, namespace, name, replicas });
 }
 
-export function k8sRestartDeployment(profile: string, namespace: string, name: string): Promise<void> {
-  return invoke<void>("k8s_restart_deployment", { profile, namespace, name });
+export function k8sRestart(
+  profile: string,
+  kind: "deployment" | "statefulset" | "daemonset",
+  namespace: string,
+  name: string,
+): Promise<void> {
+  return invoke<void>("k8s_restart", { profile, kind, namespace, name });
+}
+
+// ---- v0.2.5 (§6.10): StatefulSets, DaemonSets, create, port-forward ----
+
+export function k8sStatefulSets(profile: string, namespace: string | null): Promise<K8sStatefulSet[]> {
+  return invoke<K8sStatefulSet[]>("k8s_statefulsets", { profile, namespace });
+}
+
+export function k8sDaemonSets(profile: string, namespace: string | null): Promise<K8sDaemonSet[]> {
+  return invoke<K8sDaemonSet[]>("k8s_daemonsets", { profile, namespace });
+}
+
+export function k8sCreate(profile: string, namespace: string, content: string, dryRun: boolean): Promise<string> {
+  return invoke<string>("k8s_create", { profile, namespace, content, dryRun });
+}
+
+export function k8sIngressClasses(profile: string): Promise<string[]> {
+  return invoke<string[]>("k8s_ingress_classes", { profile });
+}
+
+export function k8sPortForwardStart(
+  profile: string,
+  kind: "pod" | "service",
+  namespace: string,
+  name: string,
+  remotePort: number,
+  localPort: number | null,
+): Promise<PortForward> {
+  return invoke<PortForward>("k8s_port_forward_start", { profile, kind, namespace, name, remotePort, localPort });
+}
+
+export function k8sPortForwardList(): Promise<PortForward[]> {
+  return invoke<PortForward[]>("k8s_port_forward_list");
+}
+
+export function k8sPortForwardStop(id: string): Promise<void> {
+  return invoke<void>("k8s_port_forward_stop", { id });
+}
+
+export function onPortForwardEnded(handler: (payload: PortForwardEnded) => void): Promise<UnlistenFn> {
+  return listen<PortForwardEnded>("port-forward-ended", handler);
 }
 
 export function k8sYaml(

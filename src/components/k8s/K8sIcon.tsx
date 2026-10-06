@@ -7,6 +7,8 @@ import type { K8sKind } from "../../lib/types";
 const ICON_SRC: Record<K8sKind, string> = {
   pod: "/k8s-icons/pod.svg",
   deployment: "/k8s-icons/deploy.svg",
+  statefulset: "/k8s-icons/sts.svg",
+  daemonset: "/k8s-icons/ds.svg",
   service: "/k8s-icons/svc.svg",
   ingress: "/k8s-icons/ing.svg",
   configmap: "/k8s-icons/cm.svg",
@@ -17,6 +19,8 @@ const ICON_SRC: Record<K8sKind, string> = {
 export const KIND_ACCENT_VAR: Record<K8sKind, string> = {
   pod: "--k8s-pod",
   deployment: "--k8s-deploy",
+  statefulset: "--k8s-sts",
+  daemonset: "--k8s-ds",
   service: "--k8s-svc",
   ingress: "--k8s-ing",
   configmap: "--k8s-cm",
@@ -27,6 +31,8 @@ export const KIND_ACCENT_VAR: Record<K8sKind, string> = {
 export const KIND_ACCENT_SOFT_VAR: Record<K8sKind, string> = {
   pod: "--k8s-pod-soft",
   deployment: "--k8s-deploy-soft",
+  statefulset: "--k8s-sts-soft",
+  daemonset: "--k8s-ds-soft",
   service: "--k8s-svc-soft",
   ingress: "--k8s-ing-soft",
   configmap: "--k8s-cm-soft",
@@ -37,6 +43,8 @@ export const KIND_ACCENT_SOFT_VAR: Record<K8sKind, string> = {
 export const KIND_LABEL: Record<K8sKind, string> = {
   pod: "Pod",
   deployment: "Deployment",
+  statefulset: "StatefulSet",
+  daemonset: "DaemonSet",
   service: "Service",
   ingress: "Ingress",
   configmap: "ConfigMap",

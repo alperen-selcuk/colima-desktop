@@ -232,8 +232,8 @@ export interface OpLog { profile: string; op: string; line: string; }
 | `k8s_nodes` | `profile` | `K8sNode[]` | |
 | `k8s_describe` | `profile, kind, namespace: string \| null, name` | `string` | `kubectl describe` (kind ∈ pod, deployment, service, node) |
 | `k8s_delete_pod` | `profile, namespace, name` | `void` | `--wait=false` |
-| `k8s_scale` | `profile, namespace, name, replicas: number` | `void` | `kubectl scale deployment/name --replicas=n` |
-| `k8s_restart_deployment` | `profile, namespace, name` | `void` | `kubectl rollout restart deployment/name` |
+| `k8s_scale` | `profile, kind: "deployment"\|"statefulset", namespace, name, replicas: number` | `void` | `kubectl scale <kind>/name --replicas=n` (v0.2.5: `kind` added) |
+| `k8s_restart` | `profile, kind: "deployment"\|"statefulset"\|"daemonset", namespace, name` | `void` | `kubectl rollout restart <kind>/name` (v0.2.5: replaces `k8s_restart_deployment`) |
 | `k8s_yaml` | `profile, kind, namespace: string \| null, name` | `string` | `kubectl get kind name -o yaml` |
 | `start_log_stream` | `profile, target: {kind:"container", id, tail} \| {kind:"pod", namespace, pod, container: string \| null, tail}` | `string` (streamId, uuid) | `docker logs -f --tail N id` / `kubectl logs -f --tail=N [-c c] pod -n ns`. Emits `log-line` (`LogEvent`) per line and `log-end` (`LogEnd`) on exit. |
 | `stop_log_stream` | `streamId` | `void` | kill child; no-op if gone |
@@ -249,7 +249,7 @@ The old `open_terminal` (external Terminal.app / x-terminal-emulator) is **remov
 | `k8s_export_kubeconfig` | `profile, path` | `string` (path written) | v0.2.3. Writes the app-managed kubeconfig to `path` with mode 0600 (atomic). Rejects relative paths, directories and the user's own kubeconfig (`$KUBECONFIG` first entry or `~/.kube/config`). |
 | `k8s_merge_kubeconfig` | `profile` | `RepairResult { backupPath }` | v0.2.3. Same logic as `repair_host_kubeconfig` (backup first, only the `colima*` user/cluster entries, never `current-context`) and additionally adds the `contexts.<ctx>` entry when it does not exist yet. `backupPath` is `""` when no kubeconfig existed. Explicit user click + confirm dialog only. |
 
-Events: `colima-op-log` (OpLog), `colima-op-end` (`OpEnd = { profile, op, ok, error }`, v0.2.3: emitted once when a streamed op finishes), `log-line` (LogEvent), `log-end` (LogEnd), `profiles-changed` (payload `null`, emitted after any lifecycle op finishes, success or failure),
+Events: `colima-op-log` (OpLog), `colima-op-end` (`OpEnd = { profile, op, ok, error }`, v0.2.3: emitted once when a streamed op finishes), `log-line` (LogEvent), `log-end` (LogEnd), `port-forward-ended` (`{id, error}`, v0.2.5), `profiles-changed` (payload `null`, emitted after any lifecycle op finishes, success or failure),
 `terminal-output` (`{ sessionId: string, data: string /* base64 of raw PTY bytes */ }`), `terminal-exit` (`{ sessionId: string, code: number | null }`).
 Terminal sessions live in managed state `Mutex<HashMap<String, Session>>`; all are killed on app quit.
 
@@ -595,6 +595,64 @@ commands built by `deps_check` (the `name` is a lookup key, never a command). UI
 banner for required deps that are missing/unlinked ("Fix all" runs fixes sequentially); the config editor warns when `vmType` is `qemu` and QEMU is absent
 (Install QEMU / Use vz). New machines seeded from the builtin or user template get `vmType: vz` (macOS only) and `arch: host` in `profile_config_raw`
 (line edits, comments preserved). `colima start` failing with "qemu-img not found" is mapped to a friendly message.
+
+### 6.10 v0.2.5: Create forms, StatefulSets & DaemonSets, port-forward
+
+All kubectl calls keep going through the app-managed kubeconfig helpers (§2.1a). The one exception shape is the
+long-running `kubectl port-forward` child, which is spawned like the log streams (`--kubeconfig <app file> --context <ctx>`,
+`KUBECONFIG` removed from the env) after `ensure_fresh`.
+
+**Whitelist.** `statefulset` and `daemonset` join the namespaced kinds of §6.6 for `k8s_describe`, `k8s_yaml`, `k8s_edit_yaml`,
+`k8s_apply_yaml` and `k8s_delete` (typed-name delete confirmation, like deployments). `k8s_scale` accepts `deployment | statefulset`;
+`k8s_restart` (renamed from `k8s_restart_deployment`) accepts `deployment | statefulset | daemonset`. Scale/restart now validate
+`namespace`/`name` against flag injection.
+
+```ts
+export interface K8sStatefulSet { name; namespace; ready: string /* "2/3" */; replicas: number; serviceName: string; images: string[]; createdAt: string; podLabels: Record<string,string> }
+export interface K8sDaemonSet   { name; namespace; desired; current; ready; available: number; images: string[]; createdAt: string; podLabels: Record<string,string> }
+// K8sPod gains: ports: {name: string|null; containerPort: number; protocol: string}[]; labels: Record<string,string>
+// K8sDeployment gains: podLabels. K8sService gains: portList: {name: string|null; port: number; protocol: string}[]
+export interface PortForward { id: string; profile: string; kind: "pod"|"service"; namespace: string; name: string; remotePort: number; localPort: number; url: string /* http://127.0.0.1:<localPort> */ }
+```
+
+| Command | Args | Returns | Implementation |
+|---|---|---|---|
+| `k8s_statefulsets` | `profile, namespace: string\|null` | `K8sStatefulSet[]` | `get statefulsets -o json` |
+| `k8s_daemonsets` | `profile, namespace: string\|null` | `K8sDaemonSet[]` | `get daemonsets -o json` |
+| `k8s_create` | `profile, namespace, content, dryRun: boolean` | `string` (kubectl output) | Parse `content` as **one** YAML document (multi-document is rejected). `kind` must be one of Pod, Deployment, Service, Ingress, StatefulSet, DaemonSet, ConfigMap, Secret; `metadata.name` must be an RFC 1123 subdomain; `namespace` must be an RFC 1123 label, not start with `-`, and is forced with `-n`; a different `metadata.namespace` in the manifest is an error. `kubectl create -f - -n <ns> [--dry-run=server]` with the manifest on **stdin**. Errors are made friendly: AlreadyExists -> `<Kind> "<name>" already exists in namespace "<ns>"`, missing namespace -> `Namespace "<ns>" does not exist`. |
+| `k8s_ingress_classes` | `profile` | `string[]` | `get ingressclass -o json`, names sorted |
+| `k8s_port_forward_start` | `profile, kind: "pod"\|"service", namespace, name, remotePort, localPort: number\|null` | `PortForward` | Validates args; `localPort` null -> prefer `remotePort` if > 1024 and free (live bind test on 127.0.0.1 and 0.0.0.0, and not used by another forward), else the first free port >= 8080; an explicit busy local port is an error. Spawns `kubectl --kubeconfig <f> --context <c> port-forward --address 127.0.0.1 -n <ns> <kind>/<name> <local>:<remote>` (tokio child kept in `AppState`, `kill_on_drop`). Waits up to 10s for a stdout line containing `Forwarding from`; on timeout or early exit the child is killed and the (noise-stripped) stderr is returned as the error. |
+| `k8s_port_forward_list` | - | `PortForward[]` | All running forwards (all profiles), sorted by profile and local port |
+| `k8s_port_forward_stop` | `id` | `void` | Kills the child, emits `port-forward-ended {id, error: null}` |
+
+Event `port-forward-ended` (`{ id, error: string | null }`): emitted when a forward's process exits on its own (`error` = last stderr
+lines or "kubectl port-forward exited") and after a user stop (`error: null`). All forwards are killed on app exit, and a profile's
+forwards are killed on `stop_profile` / `restart_profile` / `delete_profile`.
+
+**Create UI.** Tabs Pods, Deployments, StatefulSets, DaemonSets, Services and Ingresses each get a primary "Create <Kind>" button that opens a
+dialog (`K8sCreateDialog`): namespace selector (default = the page's namespace, else `default`), a per-kind form, a live YAML preview
+that can be switched to an editable "Edit YAML" mode (switching back to the form discards YAML edits), "Validate" (`dryRun: true`,
+server-side) and "Create". Manifests are produced by pure builders in `src/lib/k8sManifests.ts` (unit-tested); names are validated as RFC 1123 labels,
+ports 1-65535, NodePort 30000-32767.
+- Pod `{name, image, containerPort?, env?}` (label `app=<name>`); Deployment `{name, image, replicas, containerPort?}` (labels `app=<name>`);
+  DaemonSet `{name, image, containerPort?}`.
+- StatefulSet `{name, image, replicas, containerPort, headless Service toggle, storage size?}`: a headless Service named like the StatefulSet
+  (`clusterIP: None`, selector `app=<name>`) is created first as a separate `k8s_create` call (the backend takes one document per call);
+  a storage size adds a `volumeClaimTemplates` entry (`storageClassName: local-path`, `ReadWriteOnce`).
+- Service `{name, type ClusterIP|NodePort|LoadBalancer, port, targetPort, nodePort (NodePort only, optional), selector key/value}`; a dropdown
+  suggests labels (`app=...`) of existing deployments, statefulsets, daemonsets and pods in the namespace.
+- Ingress `{name, host?, path (default /), pathType (default Prefix), backend service (dropdown of services) + port (that service's ports), ingressClassName
+  (dropdown from k8s_ingress_classes)}`. When the cluster has no IngressClass the form shows: "No ingress controller in this cluster - colima disables
+  Traefik by default (k3s arg --disable=traefik); remove it in Configure > Kubernetes to use Ingress".
+
+**StatefulSets / DaemonSets UI.** New tabs after Deployments (official `sts.svg` / `ds.svg` icons, accent colours `--k8s-sts` / `--k8s-ds`, count badges).
+StatefulSets: Name, Namespace, Ready, Service, Age, Images; actions Scale, Restart, Edit, Delete. DaemonSets: Desired, Current, Ready, Available;
+actions Restart, Edit, Delete. Row click opens the usual describe/YAML drawer.
+
+**Port-forward UI.** Pod and Service rows get a "Port forward..." action opening a small dialog: remote port (pod: declared container ports; service:
+TCP service ports; or "Other..."), optional local port (blank = auto). Success shows a toast with an Open action (system browser). The header has a
+"Port-forwards" button with a count badge that toggles a strip listing this profile's forwards (`127.0.0.1:<local> -> <remote>`) with Open, Copy URL and Stop;
+`port-forward-ended` events refresh the list and an `error` raises a toast.
 
 ## 7. Build & run
 

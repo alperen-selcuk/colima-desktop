@@ -425,6 +425,7 @@ pub async fn stop_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    crate::portforward::kill_profile(&app, &state, &profile);
     state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
@@ -444,6 +445,7 @@ pub async fn restart_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    crate::portforward::kill_profile(&app, &state, &profile);
     state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result
@@ -463,6 +465,7 @@ pub async fn delete_profile(
 
     state.invalidate_docker_socket(&profile);
     state.kubeconfig.invalidate(&profile);
+    crate::portforward::kill_profile(&app, &state, &profile);
     state.invalidate_compose_info(&profile);
     emit_profiles_changed(&app);
     result

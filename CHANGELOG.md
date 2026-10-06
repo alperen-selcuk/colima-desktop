@@ -2,6 +2,27 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.5] - 2026-10-06
+
+### Added
+
+- **Create from the UI**: each of Pods, Deployments, StatefulSets, DaemonSets, Services and Ingresses has a "Create" button that
+  opens a simple form (no terminal needed) with a live YAML preview, an "Edit YAML" mode, "Validate" (server dry-run) and "Create".
+  Services offer a selector dropdown built from existing workload labels and a NodePort field (30000-32767); Ingresses pick the
+  backend service/port and ingress class from the cluster, and warn when no ingress controller exists (colima disables Traefik by
+  default). StatefulSets can create their headless Service and a `local-path` volumeClaimTemplate. New commands `k8s_create`
+  (single-document YAML via stdin, kind whitelist, name/namespace validation, friendly AlreadyExists errors) and `k8s_ingress_classes`.
+- **StatefulSets and DaemonSets tabs** (list, describe, YAML, edit, delete, create; scale/restart for StatefulSets, restart for
+  DaemonSets) with the official Kubernetes icons. New commands `k8s_statefulsets`, `k8s_daemonsets`.
+- **Port-forward** for pods and services: "Port forward..." row action, automatic free local port, toast with Open, and an "Active
+  port-forwards" strip with a count badge (Open, Copy URL, Stop). New commands `k8s_port_forward_start`, `k8s_port_forward_list`,
+  `k8s_port_forward_stop` and event `port-forward-ended`. Forwards are stopped when the app quits or the machine stops/restarts/is deleted.
+
+### Changed
+
+- `k8s_scale` now takes a `kind` (`deployment | statefulset`) and `k8s_restart_deployment` is replaced by `k8s_restart`
+  (`deployment | statefulset | daemonset`). Deleting statefulsets and daemonsets requires typing the name, like deployments.
+
 ## [0.2.4] - 2026-10-06
 
 ### Changed

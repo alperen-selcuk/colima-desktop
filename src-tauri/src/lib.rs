@@ -16,6 +16,7 @@ mod k8s;
 mod kubeconfig;
 mod logs;
 mod marketplace;
+mod portforward;
 mod pty;
 mod quantity;
 mod state;
@@ -85,8 +86,15 @@ pub fn run() {
             k8s::k8s_nodes,
             k8s::k8s_describe,
             k8s::k8s_delete_pod,
+            k8s::k8s_statefulsets,
+            k8s::k8s_daemonsets,
             k8s::k8s_scale,
-            k8s::k8s_restart_deployment,
+            k8s::k8s_restart,
+            k8s::k8s_create,
+            k8s::k8s_ingress_classes,
+            portforward::k8s_port_forward_start,
+            portforward::k8s_port_forward_list,
+            portforward::k8s_port_forward_stop,
             k8s::k8s_yaml,
             k8s::k8s_configmaps,
             k8s::k8s_secrets,
@@ -136,6 +144,7 @@ pub fn run() {
                     let state = app_handle.state::<AppState>();
                     logs::kill_all(&state);
                     pty::kill_all(&state);
+                    portforward::kill_all(&state);
                 }
                 _ => {}
             }

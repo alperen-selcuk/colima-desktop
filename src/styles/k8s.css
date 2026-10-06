@@ -26,6 +26,10 @@
   --k8s-pod-soft: rgba(31, 157, 115, 0.12);
   --k8s-deploy: #3f6fd6;
   --k8s-deploy-soft: rgba(63, 111, 214, 0.12);
+  --k8s-sts: #d0652a;
+  --k8s-sts-soft: rgba(208, 101, 42, 0.12);
+  --k8s-ds: #7b8a1c;
+  --k8s-ds-soft: rgba(123, 138, 28, 0.13);
   --k8s-svc: #0f8fa8;
   --k8s-svc-soft: rgba(15, 143, 168, 0.12);
   --k8s-ing: #8b2fc9;
@@ -49,6 +53,10 @@
     --k8s-pod-soft: rgba(47, 183, 134, 0.16);
     --k8s-deploy: #6f9bef;
     --k8s-deploy-soft: rgba(111, 155, 239, 0.16);
+    --k8s-sts: #f08a55;
+    --k8s-sts-soft: rgba(240, 138, 85, 0.16);
+    --k8s-ds: #b0c43e;
+    --k8s-ds-soft: rgba(176, 196, 62, 0.16);
     --k8s-svc: #22b8cf;
     --k8s-svc-soft: rgba(34, 184, 207, 0.16);
     --k8s-ing: #b57bf0;
@@ -72,6 +80,10 @@
   --k8s-pod-soft: rgba(47, 183, 134, 0.16);
   --k8s-deploy: #6f9bef;
   --k8s-deploy-soft: rgba(111, 155, 239, 0.16);
+  --k8s-sts: #f08a55;
+  --k8s-sts-soft: rgba(240, 138, 85, 0.16);
+  --k8s-ds: #b0c43e;
+  --k8s-ds-soft: rgba(176, 196, 62, 0.16);
   --k8s-svc: #22b8cf;
   --k8s-svc-soft: rgba(34, 184, 207, 0.16);
   --k8s-ing: #b57bf0;
@@ -94,6 +106,10 @@
   --k8s-pod-soft: rgba(31, 157, 115, 0.12);
   --k8s-deploy: #3f6fd6;
   --k8s-deploy-soft: rgba(63, 111, 214, 0.12);
+  --k8s-sts: #d0652a;
+  --k8s-sts-soft: rgba(208, 101, 42, 0.12);
+  --k8s-ds: #7b8a1c;
+  --k8s-ds-soft: rgba(123, 138, 28, 0.13);
   --k8s-svc: #0f8fa8;
   --k8s-svc-soft: rgba(15, 143, 168, 0.12);
   --k8s-ing: #8b2fc9;
@@ -183,4 +199,32 @@
   background: var(--surface-3);
   border: 1px solid var(--border);
   color: var(--text-dim);
+}
+
+.k8s-pf-strip {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  padding: 8px 16px;
+}
+
+.k8s-pf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+
+.k8s-pf-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--k8s-blue-soft);
+  color: var(--k8s-blue);
 }

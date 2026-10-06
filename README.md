@@ -46,7 +46,7 @@ deployment, service, node) görüntülemenizi sağlar.
   `docker inspect` çıktısı, canlı istatistikler, compose projesine göre gruplama, port linklerini tarayıcıda açma.
 - Image yönetimi: pull (akan çıktı ile), silme, kullanılmayanları temizleme (prune), "in use" rozeti.
 - Volume yönetimi: listeleme, silme, kullanılmayanları temizleme.
-- Kubernetes sekmesi: Pods, Deployments, Services, Nodes; log/describe/yaml paneli, ölçekleme, deployment
+- Kubernetes sekmesi: Pods, Deployments, StatefulSets, DaemonSets, Services, Nodes; formlarla oluşturma, port-forward; log/describe/yaml paneli, ölçekleme, deployment
   yeniden başlatma, pod silme.
 - **Entegre terminal paneli**: pencerenin altında açılıp kapanabilen, yeniden boyutlandırılabilir bir panel
   (`Ctrl+\``ile aç/kapat). "Output" sekmesinde makine/işlem logları akar; ayrıca yerel kabuk, Colima VM'i,
@@ -117,7 +117,7 @@ services, nodes).
   `docker inspect` output, live stats, grouping by compose project, clickable port links opened in the browser.
 - Image management: pull (with streamed output), delete, prune unused, "in use" badge.
 - Volume management: list, delete, prune unused.
-- Kubernetes tab: Pods, Deployments, Services, Nodes; logs/describe/yaml detail drawer, scaling, deployment
+- Kubernetes tab: Pods, Deployments, StatefulSets, DaemonSets, Services, Nodes; create forms, port-forward; logs/describe/yaml detail drawer, scaling, deployment
   restart, pod deletion.
 - **Integrated terminal dock**: a resizable, IDE-style bottom panel (toggle with `Ctrl+\``). Its Output tab
   streams machine/operation logs; you can also open real terminal tabs (powered by xterm.js) into a local
