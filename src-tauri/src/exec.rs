@@ -288,6 +288,8 @@ fn extract_msg(line: &str) -> Option<String> {
     None
 }
 
+pub(crate) const QEMU_MISSING: &str = "QEMU isn't installed. Use VM type vz (recommended on macOS) or install QEMU from the Setup page.";
+
 /// Turn the last output lines of a failed colima op into a user-facing message.
 /// Prefers the `msg` of the last `level=fatal` line (else last `level=error`),
 /// maps known cases to actionable hints, and falls back to the raw lines.
@@ -309,6 +311,9 @@ pub(crate) fn friendly_error(lines: &[String], macos: bool) -> String {
         } else {
             "Docker CLI not found. Install your distribution's docker CLI package (e.g. `docker-ce-cli` or `docker.io`) and make sure `docker` is on your PATH.".to_string()
         };
+    }
+    if msg.contains("qemu-img not found") {
+        return QEMU_MISSING.to_string();
     }
     if msg.contains("error starting vm: error at 'starting'") {
         return crate::disk::START_FAILED_GENERIC.to_string();
@@ -369,6 +374,12 @@ mod tests {
         let l = friendly_error(&lines(DOCKER_LINE), false);
         assert!(l.contains("distribution"));
         assert!(!l.contains("brew"));
+    }
+
+    #[test]
+    fn friendly_error_maps_missing_qemu() {
+        let l = "level=fatal msg=\"cannot use vmType: 'qemu', error: qemu-img not found, run 'brew install qemu'\"";
+        assert_eq!(friendly_error(&lines(l), true), QEMU_MISSING);
     }
 
     #[test]

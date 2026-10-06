@@ -2,6 +2,20 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.2] - 2026-10-06
+
+### Added
+
+- **Dependency doctor**: `deps_check` / `deps_fix` detect colima, docker, docker-compose, kubectl and (optional)
+  qemu, including Homebrew formulae that are installed but unlinked, and fix them with `brew install` / `brew link`.
+  Shown on the Setup page, as a Machines-page banner (Fix all), and as an Install QEMU button in the config editor.
+
+### Changed
+
+- New machines seeded from the template/builtin default now use `vmType: vz` on macOS and `arch: host`
+  (upstream's template says `qemu`, which needs a separate QEMU install).
+- "qemu-img not found" on start now explains how to fix it. The Homebrew cask also depends on `kubectl`.
+
 ## [0.2.1] - 2026-10-06
 
 ### Fixed

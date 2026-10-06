@@ -5,6 +5,7 @@ import type {
   CatalogResponse,
   ComposeActionKind,
   ComposeInfo,
+  Dep,
   ComposePreview,
   ComposeProject,
   ComposePullPolicy,
@@ -121,6 +122,10 @@ async function mockInvoke<T>(
   switch (cmd) {
     case "env_info":
       return mock.mockEnvInfo as unknown as T;
+    case "deps_check":
+      return mock.mockDeps as unknown as T;
+    case "deps_fix":
+      return mock.mockDeps as unknown as T;
     case "list_profiles":
       return mock.mockProfiles as unknown as T;
     case "profile_status":
@@ -393,6 +398,16 @@ async function mockMarketplaceInstall(
 
 export function envInfo(): Promise<EnvInfo> {
   return invoke<EnvInfo>("env_info");
+}
+
+/** Dependency doctor (§6.9). */
+export function depsCheck(): Promise<Dep[]> {
+  return invoke<Dep[]>("deps_check");
+}
+
+/** Runs the allowlisted fix for one dependency (streams op `deps` into the Output dock), then re-checks. */
+export function depsFix(name: string): Promise<Dep[]> {
+  return invoke<Dep[]>("deps_fix", { name });
 }
 
 export function listProfiles(): Promise<Profile[]> {

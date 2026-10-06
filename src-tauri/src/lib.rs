@@ -6,6 +6,7 @@
 mod colima;
 mod compose;
 mod config_file;
+mod deps;
 mod disk;
 mod docker;
 mod env;
@@ -36,6 +37,8 @@ pub fn run() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             env::env_info,
+            deps::deps_check,
+            deps::deps_fix,
             colima::list_profiles,
             colima::profile_status,
             colima::profile_config,
