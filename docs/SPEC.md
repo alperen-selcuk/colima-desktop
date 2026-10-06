@@ -209,6 +209,9 @@ export interface OpLog { profile: string; op: string; line: string; }
 | `delete_profile` | `profile` | `void` | `colima delete -f -p p` (colima ≥0.8 uses `--force`/`-f`), op `"delete"` |
 | `kubernetes_action` | `profile, action: "start"\|"stop"\|"reset"\|"delete"` | `void` | `colima kubernetes <action> -p p` (reset/delete: add `-f` if the CLI accepts it; detect by running and retrying without on "unknown shorthand flag"), op `"k8s-<action>"` |
 | `busy_profiles` | – | `string[]` | profiles with an op in flight |
+| `profile_disk_info` | `profile` | `{ exists: boolean, sizeGiB: number \| null, usedOnHostBytes: number \| null }` | stat `<colimaHome>/_lima/<instanceId>/diffdisk` (instanceId = `colima` for `default`, else `colima-<profile>`): apparent length = real disk size, `blocks*512` = bytes used on the host. Missing file → `exists:false`. |
+| `recreate_profile` | `profile, configContent` | `void` | Validate YAML with the typed validator, then (busy lock, op `"recreate"`): `colima stop -p p` (failures ignored), `colima delete -f -p p` (also removes `<colimaHome>/<p>/colima.yaml`), atomic config save of `configContent`, `colima start -p p` (no flags). Invalidates kubeconfig/docker-socket/compose caches; emits `profiles-changed`. |
+| `reclaim_space` | `profile` | `void` | Running machines only. `docker -H s system prune -af` (never volumes), then best-effort `colima ssh -p p -- sudo fstrim -av`; busy lock, op `"reclaim"`. |
 | `list_containers` | `profile` | `Container[]` | see §3 |
 | `container_action` | `profile, id, action: "start"\|"stop"\|"restart"\|"pause"\|"unpause"\|"kill"\|"remove"` | `void` | `docker -H s <action> id`; remove = `rm -f` |
 | `container_inspect` | `profile, id` | `any` (JSON) | `docker inspect id` → first element |
@@ -335,6 +338,18 @@ Dialog layout: left section nav, right form, sticky footer. Sections & keys:
 - **Provision**: `provision` (rows: mode system|user, script — monospace textarea).
 - **YAML**: raw editor (monospace textarea with line numbers), two-way synced with the form; parse errors shown inline and block saving.
 Each field shows its YAML key and a one-line help. Changed fields get a subtle "modified" marker; footer shows "N changes".
+**Disk can't shrink (v0.2.1):** Lima/colima cannot shrink a VM disk (a smaller `disk` makes `colima start` fail with
+"error starting vm: error at 'starting'"). For an existing machine, a `disk` below `profile_disk_info.sizeGiB` is an
+**error** that blocks Save / Save & Start / Save & Restart: "A VM disk can't be shrunk (current size N GiB). Recreate the
+machine to use a smaller disk." with a **Recreate with smaller disk…** button. Equal or larger is fine. The button opens a
+confirm dialog (consequences: all images, containers, volumes and the Kubernetes cluster are deleted; configuration incl.
+Kubernetes settings is kept; shows current and new size; requires typing the profile name) and calls `recreate_profile`.
+No validation rule blocks Kubernetes settings (enabled/version/k3sArgs/port); covered by a test.
+**Reclaim space (v0.2.1):** Machines card button and a button in the Resources section (running machines only) open a dialog showing
+the disk's used-on-Mac size, then run `reclaim_space` (`docker system prune -af`, not volumes — links to the Volumes page —
+plus `fstrim`); afterwards `profile_disk_info` is re-read and a toast says "Freed X on your Mac" (or that space inside the VM
+was freed but the Mac file didn't shrink). `colima start` failures with "error at 'starting'" are mapped to a shrink explanation
+(when configured disk < current disk) or a generic "VM failed to start; if you reduced the disk…" message.
 Warnings banner when changing `arch`, `runtime` or `vmType` of an existing machine ("requires deleting the machine").
 Footer buttons: `Reset to template`, `Save`, primary `Save & Start` (stopped) / `Save & Restart` (running; stop then start).
 Entry points: Machines card Start becomes a split button (`Start` | ▾ `Start with configuration…`), running cards get `Configure…`,

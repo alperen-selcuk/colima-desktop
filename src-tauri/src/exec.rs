@@ -257,7 +257,10 @@ pub async fn run_streaming_with_env(
         Ok(())
     } else {
         let lines: Vec<String> = tail.into_iter().collect();
-        Err(friendly_error(&lines, cfg!(target_os = "macos")))
+        Err(crate::disk::refine_start_error(
+            friendly_error(&lines, cfg!(target_os = "macos")),
+            profile,
+        ))
     }
 }
 
@@ -306,6 +309,9 @@ pub(crate) fn friendly_error(lines: &[String], macos: bool) -> String {
         } else {
             "Docker CLI not found. Install your distribution's docker CLI package (e.g. `docker-ce-cli` or `docker.io`) and make sure `docker` is on your PATH.".to_string()
         };
+    }
+    if msg.contains("error starting vm: error at 'starting'") {
+        return crate::disk::START_FAILED_GENERIC.to_string();
     }
     msg
 }
@@ -371,6 +377,12 @@ mod tests {
         assert_eq!(friendly_error(&lines(fatal), true), "boom \"x\"");
         let err = "level=info msg=\"hi\"\nlevel=error msg=\"bad thing\"\nlevel=info msg=\"after\"";
         assert_eq!(friendly_error(&lines(err), true), "bad thing");
+    }
+
+    #[test]
+    fn friendly_error_maps_vm_start_failure() {
+        let l = "level=fatal msg=\"error starting vm: error at 'starting': exit status 1\"";
+        assert_eq!(friendly_error(&lines(l), true), crate::disk::START_FAILED_GENERIC);
     }
 
     #[test]

@@ -8,9 +8,11 @@ interface DialogProps {
   children: ReactNode;
   footer?: ReactNode;
   width?: number;
+  /** Override the stacking layer (e.g. to open above the full-screen config editor). */
+  zIndex?: number;
 }
 
-export function Dialog({ open, onClose, title, children, footer, width = 480 }: DialogProps) {
+export function Dialog({ open, onClose, title, children, footer, width = 480, zIndex }: DialogProps) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -25,7 +27,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 480 }: 
   return (
     <div
       className="fixed inset-0 z-[150] flex items-center justify-center fade-in"
-      style={{ background: "rgba(0,0,0,0.45)" }}
+      style={{ background: "rgba(0,0,0,0.45)", ...(zIndex ? { zIndex } : {}) }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

@@ -528,11 +528,9 @@ pub fn validate_colima_config(value: &serde_yaml::Value) -> Vec<ConfigIssue> {
     issues
 }
 
-/// `save_profile_config_raw`: validate `content`, back up the existing file
-/// (if any) to `colima.yaml.bak`, and write the new content atomically
-/// (temp file in the same directory, then rename).
-fn save_profile_config_raw_at(home: &std::path::Path, profile: &str, content: &str) -> Result<(), String> {
-    validate_profile_name(profile)?;
+/// Validate `content` as a colima.yaml: a YAML mapping that passes the typed
+/// checks (errors only; warnings never block).
+pub(crate) fn validate_config_content(content: &str) -> Result<(), String> {
     validate_yaml_mapping(content)?;
 
     let value: serde_yaml::Value =
@@ -552,6 +550,16 @@ fn save_profile_config_raw_at(home: &std::path::Path, profile: &str, content: &s
         }
         return Err(message.trim_end().to_string());
     }
+
+    Ok(())
+}
+
+/// `save_profile_config_raw`: validate `content`, back up the existing file
+/// (if any) to `colima.yaml.bak`, and write the new content atomically
+/// (temp file in the same directory, then rename).
+pub(crate) fn save_profile_config_raw_at(home: &std::path::Path, profile: &str, content: &str) -> Result<(), String> {
+    validate_profile_name(profile)?;
+    validate_config_content(content)?;
 
     let path = profile_config_path_at(home, profile);
     let dir = path
@@ -1031,6 +1039,13 @@ mod validation_tests {
     fn kubernetes_port_rejects_float() {
         let errors = errors_for("kubernetes:\n  port: 6443.5\n");
         assert!(errors.iter().any(|i| i.path == "kubernetes.port"), "{errors:?}");
+    }
+
+    #[test]
+    fn enabling_kubernetes_with_any_settings_has_no_errors() {
+        let yaml = "disk: 10\nkubernetes:\n  enabled: true\n  version: v1.35.0+k3s1\n  port: 0\n  k3sArgs: [--disable=traefik]\n";
+        assert!(errors_for(yaml).is_empty());
+        assert!(errors_for("kubernetes:\n  enabled: true\n").is_empty());
     }
 
     #[test]

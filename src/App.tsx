@@ -128,6 +128,11 @@ function AppShell() {
     });
   };
 
+  const openVolumes = (profile: string) => {
+    setSelected(profile);
+    setPage("volumes");
+  };
+
   const handleStop = () => {
     if (!selected) return;
     setConfirmStop(selected);
@@ -183,6 +188,7 @@ function AppShell() {
             onConfigureProfile={(name) => setConfigDialog({ profile: name })}
             onQuickStartOptions={(name) => setStartDialogProfile(name)}
             onNewMachine={() => setConfigDialog({ profile: null })}
+            onOpenVolumes={openVolumes}
           />
         );
       case "containers":
@@ -261,6 +267,7 @@ function AppShell() {
         }
         initialSection={configDialog?.initialSection}
         initialPatch={configDialog?.initialPatch}
+        onOpenVolumes={openVolumes}
         onClose={() => setConfigDialog(undefined)}
         onSaved={(name) => {
           setSelected(name);
