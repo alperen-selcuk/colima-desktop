@@ -30,8 +30,9 @@ const KNOWN_DIRS: &[&str] = &[
     "/sbin",
 ];
 
-const PATH_MARKER: &str = "__PATH__";
-const KUBECONFIG_MARKER: &str = "__KUBECONFIG__";
+/// Printed before `env -0` so rc-file noise (prompt banners etc.) written to
+/// stdout by an interactive shell never corrupts the first variable.
+const ENV_MARKER: &str = "__COLIMA_DESKTOP_ENV__";
 
 /// Expand a leading `~` to `home`, if given. Pure function so tests can
 /// inject a home directory instead of mutating the process-global `HOME`
@@ -45,39 +46,43 @@ fn expand_home_with(path: &str, home: Option<&std::ffi::OsStr>) -> PathBuf {
     PathBuf::from(path)
 }
 
-/// Extract the text between a pair of `marker` occurrences in `haystack`
-/// (as printed by e.g. `printf "__PATH__%s__PATH__" "$PATH"`), or `None` if
-/// the marker doesn't appear (twice).
-fn extract_between_markers(haystack: &str, marker: &str) -> Option<String> {
-    let start = haystack.find(marker)? + marker.len();
-    let rest = &haystack[start..];
-    let end = rest.find(marker)?;
-    Some(rest[..end].to_string())
+/// Parse the NUL-separated output of `env -0` (after [`ENV_MARKER`]) into
+/// `(key, value)` pairs. Entries without a valid `NAME=` prefix are skipped.
+pub fn parse_env_nul(stdout: &[u8]) -> Vec<(String, String)> {
+    let text = String::from_utf8_lossy(stdout);
+    let body = match text.find(ENV_MARKER) {
+        Some(i) => &text[i + ENV_MARKER.len()..],
+        None => return Vec::new(),
+    };
+    body.split('\0')
+        .filter_map(|entry| {
+            let (k, v) = entry.split_once('=')?;
+            let valid = !k.is_empty()
+                && !k.starts_with(|c: char| c.is_ascii_digit())
+                && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            valid.then(|| (k.to_string(), v.to_string()))
+        })
+        .collect()
 }
 
-/// Result of resolving the user's login-interactive shell environment: its
-/// `PATH` and (if set) its `KUBECONFIG`, fetched in a single shell
-/// invocation so GUI apps (which inherit neither) can resolve both cheaply.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct ShellEnv {
-    path: Option<String>,
-    kubeconfig: Option<String>,
+/// The user's full login-shell environment, captured once at startup by
+/// [`fix_path`]. Empty if capture failed (callers then inherit the process env).
+static LOGIN_ENV: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+
+/// Full login-shell environment for host terminal sessions (may be empty).
+pub fn login_env() -> &'static [(String, String)] {
+    LOGIN_ENV.get().map(Vec::as_slice).unwrap_or(&[])
 }
 
-/// Fetch the user's login-interactive shell `PATH` and `KUBECONFIG` by
-/// running a single `$SHELL -ilc '...'` invocation with a 3s timeout, each
-/// wrapped in its own pair of markers. Returns defaults (`None`/`None`) on
-/// any failure (missing `$SHELL`, timeout, parse failure).
-fn shell_env() -> ShellEnv {
+/// Capture the user's login-interactive shell environment with a single
+/// `$SHELL -ilc 'printf MARKER; env -0'` and a 3s timeout. Empty on any
+/// failure (missing `$SHELL`, timeout, parse failure).
+fn capture_login_env() -> Vec<(String, String)> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let (tx, rx) = std::sync::mpsc::channel();
-    let shell_clone = shell.clone();
     let handle = std::thread::spawn(move || {
-        let output = std::process::Command::new(&shell_clone)
-            .args([
-                "-ilc",
-                "printf \"__PATH__%s__PATH____KUBECONFIG__%s__KUBECONFIG__\" \"$PATH\" \"$KUBECONFIG\"",
-            ])
+        let output = std::process::Command::new(&shell)
+            .args(["-ilc", &format!("printf '%s' {ENV_MARKER}; env -0")])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -86,16 +91,15 @@ fn shell_env() -> ShellEnv {
     });
 
     let Some(Ok(output)) = rx.recv_timeout(Duration::from_secs(3)).ok() else {
-        return ShellEnv::default();
+        return Vec::new();
     };
     // don't block shutdown on a hung shell; detach the thread if it's slow.
     let _ = handle;
+    parse_env_nul(&output.stdout)
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    ShellEnv {
-        path: extract_between_markers(&stdout, PATH_MARKER),
-        kubeconfig: extract_between_markers(&stdout, KUBECONFIG_MARKER).filter(|s| !s.is_empty()),
-    }
+fn env_get<'a>(env: &'a [(String, String)], key: &str) -> Option<&'a str> {
+    env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
 }
 
 /// Merge the shell `PATH` (if resolvable) with [`KNOWN_DIRS`] (expanded
@@ -135,17 +139,18 @@ fn merge_path(shell_path: Option<&str>) -> String {
 /// install directories, and (if the shell has one set) the process
 /// `KUBECONFIG` — GUI apps on macOS inherit neither, but `kubeconfig.rs`'s
 /// host-kubeconfig health check needs the user's real `KUBECONFIG` to find
-/// their `~/.kube/config`. Fetched in one shell invocation (`shell_env`).
-/// Every kubectl child command explicitly strips `KUBECONFIG` from its own
-/// env regardless (§2.1a), so setting it here only affects that one lookup,
-/// never what kubectl itself sees. Must run before any subprocess is
-/// spawned.
+/// their `~/.kube/config`. The whole login env is captured once and kept for
+/// host terminal sessions ([`login_env`]). Every app-internal kubectl/docker
+/// child command strips `KUBECONFIG`/`DOCKER_HOST` from its own env
+/// regardless (§2.1a); host PTY shells do not. Must run before any
+/// subprocess is spawned.
 pub fn fix_path() {
-    let env = shell_env();
-    std::env::set_var("PATH", merge_path(env.path.as_deref()));
-    if let Some(kubeconfig) = env.kubeconfig {
+    let env = capture_login_env();
+    std::env::set_var("PATH", merge_path(env_get(&env, "PATH")));
+    if let Some(kubeconfig) = env_get(&env, "KUBECONFIG").filter(|s| !s.is_empty()) {
         std::env::set_var("KUBECONFIG", kubeconfig);
     }
+    let _ = LOGIN_ENV.set(env);
 }
 
 /// Environment/tooling info surfaced to the frontend.
@@ -159,6 +164,8 @@ pub struct EnvInfo {
     pub kubectl_available: bool,
     pub limactl_available: bool,
     pub path: String,
+    /// Basename of the user's login shell (`zsh`, `bash`, ...), for the Terminal button label.
+    pub shell: String,
 }
 
 /// Look up `bin` in the current `PATH`, the same way a shell would.
@@ -200,6 +207,7 @@ pub async fn env_info() -> EnvInfo {
         kubectl_available: find_in_path("kubectl").is_some(),
         limactl_available: find_in_path("limactl").is_some(),
         path: std::env::var("PATH").unwrap_or_default(),
+        shell: crate::terminal::shell_name(&crate::terminal::host_shell()),
     }
 }
 
@@ -235,32 +243,24 @@ mod tests {
     }
 
     #[test]
-    fn parses_path_between_markers() {
-        let stdout = format!("{}/foo:/bar{}", PATH_MARKER, PATH_MARKER);
-        assert_eq!(extract_between_markers(&stdout, PATH_MARKER).as_deref(), Some("/foo:/bar"));
+    fn parse_env_nul_splits_entries_and_skips_noise() {
+        let out = format!("banner text{ENV_MARKER}PATH=/a:/b\0KUBECONFIG=/k1:/k2\0MULTI=line1\nline2\0EMPTY=\0bad entry\09X=1\0");
+        let env = parse_env_nul(out.as_bytes());
+        assert_eq!(env_get(&env, "PATH"), Some("/a:/b"));
+        assert_eq!(env_get(&env, "KUBECONFIG"), Some("/k1:/k2"));
+        assert_eq!(env_get(&env, "MULTI"), Some("line1\nline2"));
+        assert_eq!(env_get(&env, "EMPTY"), Some(""));
+        assert_eq!(env.len(), 4);
     }
 
     #[test]
-    fn extract_between_markers_parses_both_path_and_kubeconfig() {
-        let stdout = format!(
-            "{}/foo:/bar{}{}/Users/x/.kube/config{}",
-            PATH_MARKER, PATH_MARKER, KUBECONFIG_MARKER, KUBECONFIG_MARKER
-        );
-        assert_eq!(extract_between_markers(&stdout, PATH_MARKER).as_deref(), Some("/foo:/bar"));
-        assert_eq!(
-            extract_between_markers(&stdout, KUBECONFIG_MARKER).as_deref(),
-            Some("/Users/x/.kube/config")
-        );
+    fn parse_env_nul_without_marker_is_empty() {
+        assert!(parse_env_nul(b"PATH=/a\0").is_empty());
     }
 
     #[test]
-    fn extract_between_markers_missing_marker_is_none() {
-        assert_eq!(extract_between_markers("no markers here", PATH_MARKER), None);
-    }
-
-    #[test]
-    fn extract_between_markers_empty_value() {
-        let stdout = format!("{}{}", KUBECONFIG_MARKER, KUBECONFIG_MARKER);
-        assert_eq!(extract_between_markers(&stdout, KUBECONFIG_MARKER).as_deref(), Some(""));
+    fn parse_env_nul_value_may_contain_equals() {
+        let out = format!("{ENV_MARKER}OPTS=a=b=c\0");
+        assert_eq!(env_get(&parse_env_nul(out.as_bytes()), "OPTS"), Some("a=b=c"));
     }
 }

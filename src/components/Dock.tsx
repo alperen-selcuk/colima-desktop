@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Plus, ScrollText, X } from "lucide-react";
 import { useDock } from "../lib/useDock";
 import { OutputPanel } from "./OutputPanel";
 import { TerminalView } from "./TerminalView";
+import { useShellName } from "../lib/useShellName";
 
 interface DockProps {
   profile: string | null;
@@ -12,6 +13,7 @@ interface DockProps {
 export function Dock({ profile, running }: DockProps) {
   const { open, setOpen, height, setHeight, activeTab, setActiveTab, terminals, openTerminalTab, closeTerminalTab } =
     useDock();
+  const shell = useShellName();
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const dragState = useRef<{ startY: number; startHeight: number } | null>(null);
 
@@ -116,12 +118,12 @@ export function Dock({ profile, running }: DockProps) {
                     onClick={(e) => {
                       e.stopPropagation();
                       setAddMenuOpen(false);
-                      openTerminalTab({ kind: "host" }, profile);
+                      openTerminalTab({ kind: "host" }, profile, shell);
                     }}
                     className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--surface-2)]"
                     style={{ color: "var(--text)" }}
                   >
-                    Local shell
+                    Local shell ({shell})
                   </button>
                   <button
                     disabled={!running}

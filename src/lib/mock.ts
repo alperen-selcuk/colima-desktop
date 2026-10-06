@@ -53,6 +53,7 @@ export const mockEnvInfo: EnvInfo = {
   kubectlAvailable: true,
   limactlAvailable: true,
   path: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+  shell: "zsh",
 };
 
 export const mockDeps: Dep[] = [

@@ -41,20 +41,31 @@ pub struct TerminalExit {
     pub code: Option<i32>,
 }
 
-/// Build the env overrides applied on top of the (already PATH-fixed)
-/// inherited process environment: `TERM`/`COLORTERM` forced,
-/// `LANG` defaulted if unset, `DOCKER_HOST`/`DOCKER_CONTEXT` stripped (§2.2,
-/// §4) so nothing overrides the explicit `-H`/`--context` flags baked into
+/// Build the env applied to a PTY command. All targets get `TERM`/`COLORTERM`
+/// and a `LANG` default. HOST shells additionally start from the user's full
+/// login-shell environment and keep `KUBECONFIG`/`DOCKER_HOST` untouched, so
+/// the user's own kubectl/docker behave exactly like in their Terminal. The
+/// other targets (vm/container/pod) strip `DOCKER_HOST`/`DOCKER_CONTEXT`/
+/// `KUBECONFIG` (§2.2, §4) so nothing overrides the explicit flags baked into
 /// the command itself.
-fn apply_pty_env(cmd: &mut CommandBuilder) {
+fn apply_pty_env(cmd: &mut CommandBuilder, host: bool) {
+    if host {
+        for (k, v) in crate::env::login_env() {
+            cmd.env(k, v);
+        }
+    }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    if std::env::var_os("LANG").is_none() {
+    let has_lang = std::env::var_os("LANG").is_some()
+        || (host && crate::env::login_env().iter().any(|(k, _)| k == "LANG"));
+    if !has_lang {
         cmd.env("LANG", "en_US.UTF-8");
     }
-    cmd.env_remove("DOCKER_HOST");
-    cmd.env_remove("DOCKER_CONTEXT");
-    cmd.env_remove("KUBECONFIG");
+    if !host {
+        cmd.env_remove("DOCKER_HOST");
+        cmd.env_remove("DOCKER_CONTEXT");
+        cmd.env_remove("KUBECONFIG");
+    }
 }
 
 /// Build the `portable_pty::CommandBuilder` for `target`, applying cwd
@@ -78,7 +89,7 @@ async fn build_pty_command(
             cmd.cwd(home);
         }
     }
-    apply_pty_env(&mut cmd);
+    apply_pty_env(&mut cmd, matches!(target, TerminalTarget::Host));
     Ok(cmd)
 }
 

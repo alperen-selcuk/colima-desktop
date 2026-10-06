@@ -38,10 +38,10 @@ function writeStoredHeight(h: number): void {
   }
 }
 
-function targetTitle(target: TerminalTarget, profile: string | null): string {
+export function targetTitle(target: TerminalTarget, profile: string | null, shell = "zsh"): string {
   switch (target.kind) {
     case "host":
-      return "zsh";
+      return shell;
     case "vm":
       return `vm: ${profile ?? "default"}`;
     case "container":
@@ -60,7 +60,7 @@ interface DockContextValue {
   activeTab: string; // "output" or a terminal tab id
   setActiveTab: (id: string) => void;
   terminals: TerminalTab[];
-  openTerminalTab: (target: TerminalTarget, profile: string | null) => void;
+  openTerminalTab: (target: TerminalTarget, profile: string | null, shell?: string) => void;
   closeTerminalTab: (id: string) => void;
   openOutputTab: () => void;
 }
@@ -82,9 +82,9 @@ export function DockProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
-  const openTerminalTab = useCallback((target: TerminalTarget, profile: string | null) => {
+  const openTerminalTab = useCallback((target: TerminalTarget, profile: string | null, shell?: string) => {
     const id = `term-${++counter.current}`;
-    const tab: TerminalTab = { id, title: targetTitle(target, profile), profile, target };
+    const tab: TerminalTab = { id, title: targetTitle(target, profile, shell), profile, target };
     setTerminals((prev) => [...prev, tab]);
     setActiveTab(id);
     setOpen(true);

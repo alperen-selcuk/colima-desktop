@@ -51,7 +51,7 @@ where
     Fut: std::future::Future<Output = Result<std::path::PathBuf, String>>,
 {
     match target {
-        TerminalTarget::Host => Ok((host_shell(), vec!["-l".to_string()])),
+        TerminalTarget::Host => Ok((host_shell(), shell_args(&host_shell()))),
         TerminalTarget::Vm => {
             let profile = require_profile(profile)?;
             Ok(("colima".to_string(), vec!["ssh".to_string(), "-p".to_string(), profile.to_string()]))
@@ -123,6 +123,26 @@ pub fn host_shell() -> String {
     pick_shell(std::env::var("SHELL").ok().as_deref(), |p| std::path::Path::new(p).is_file())
 }
 
+/// Basename of a shell path (`/bin/zsh` -> `zsh`).
+pub fn shell_name(shell: &str) -> String {
+    std::path::Path::new(shell)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "sh".to_string())
+}
+
+/// Args that make `shell` behave like the user's own macOS Terminal: an
+/// interactive login shell. zsh/bash need `-il` so both the login files
+/// (`.zprofile`/`.bash_profile`) and `.zshrc`/`.bashrc` load; other shells
+/// (fish, sh, ...) keep `-l`.
+pub fn shell_args(shell: &str) -> Vec<String> {
+    match shell_name(shell).as_str() {
+        "zsh" | "bash" => vec!["-il".to_string()],
+        _ => vec!["-l".to_string()],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,7 +159,21 @@ mod tests {
         let state = AppState::default();
         let (program, args) = build_command(&state, None, &TerminalTarget::Host, stub_ensure_fresh).await.unwrap();
         assert_eq!(program, host_shell());
-        assert_eq!(args, vec!["-l".to_string()]);
+        assert_eq!(args, shell_args(&host_shell()));
+    }
+
+    #[test]
+    fn shell_args_per_shell() {
+        assert_eq!(shell_args("/bin/zsh"), vec!["-il"]);
+        assert_eq!(shell_args("/opt/homebrew/bin/bash"), vec!["-il"]);
+        assert_eq!(shell_args("/opt/homebrew/bin/fish"), vec!["-l"]);
+        assert_eq!(shell_args("/bin/sh"), vec!["-l"]);
+    }
+
+    #[test]
+    fn shell_name_is_basename() {
+        assert_eq!(shell_name("/usr/local/bin/fish"), "fish");
+        assert_eq!(shell_name(""), "sh");
     }
 
     #[tokio::test]

@@ -40,6 +40,7 @@ function AppShell() {
   const dock = useDock();
 
   const envQuery = useQuery({ queryKey: ["envInfo"], queryFn: api.envInfo });
+  const shell = envQuery.data?.shell || "shell";
   const profilesQuery = useQuery({
     queryKey: ["profiles"],
     queryFn: api.listProfiles,
@@ -184,8 +185,18 @@ function AppShell() {
   };
 
   const handleTerminal = () => {
+    dock.openTerminalTab({ kind: "host" }, selected, shell);
+  };
+
+  const handleTerminalVm = () => {
     if (!selected) return;
     dock.openTerminalTab({ kind: "vm" }, selected);
+  };
+
+  const handleToggleDock = () => {
+    // Opening an empty dock from the status bar gives the user their own shell.
+    if (!dock.open && dock.terminals.length === 0) handleTerminal();
+    else dock.toggle();
   };
 
   // Missing dependencies full-page setup guide.
@@ -263,6 +274,8 @@ function AppShell() {
           onStop={handleStop}
           onRestart={handleRestart}
           onTerminal={handleTerminal}
+          onTerminalVm={handleTerminalVm}
+          shell={shell}
         />
         <div className="flex min-h-0 flex-1 flex-col">{pageContent}</div>
         <Dock profile={selected} running={currentProfile?.status === "Running"} />
@@ -272,7 +285,7 @@ function AppShell() {
           busy={isBusy}
           ops={opList}
           dockOpen={dock.open}
-          onToggleDock={dock.toggle}
+          onToggleDock={handleToggleDock}
         />
       </div>
 

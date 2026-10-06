@@ -1,6 +1,8 @@
+import { TerminalSplitButton } from "../components/TerminalSplitButton";
+import { useShellName } from "../lib/useShellName";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Database, Eraser, HardDrive, Plus, RotateCw, Settings, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { Cpu, Database, Eraser, HardDrive, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
 import type { Profile } from "../lib/types";
 import { formatBytes } from "../lib/format";
@@ -41,6 +43,8 @@ function MachineCard({
   onRestart,
   onDelete,
   onTerminal,
+  onTerminalVm,
+  shell,
   onReclaim,
 }: {
   profile: Profile;
@@ -56,6 +60,8 @@ function MachineCard({
   onRestart: () => void;
   onDelete: () => void;
   onTerminal: () => void;
+  onTerminalVm: () => void;
+  shell: string;
   onReclaim: () => void;
 }) {
   const running = profile.status === "Running";
@@ -152,9 +158,13 @@ function MachineCard({
         <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
           <RotateCw size={11} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={onTerminal} disabled={!running} title="Terminal">
-          <TerminalSquare size={11} />
-        </Button>
+        <TerminalSplitButton
+          shell={shell}
+          profile={profile.name}
+          vmEnabled={running}
+          onLocal={onTerminal}
+          onVm={onTerminalVm}
+        />
         <Button variant="ghost" size="sm" onClick={onReclaim} disabled={busy || !running} title="Reclaim space…">
           <Eraser size={11} />
         </Button>
@@ -199,7 +209,11 @@ export function MachinesPage({
     }
   };
 
+  const shell = useShellName();
   const handleTerminal = (name: string) => {
+    dock.openTerminalTab({ kind: "host" }, name, shell);
+  };
+  const handleTerminalVm = (name: string) => {
     dock.openTerminalTab({ kind: "vm" }, name);
   };
 
@@ -253,6 +267,8 @@ export function MachinesPage({
             onRestart={() => handleRestart(p.name)}
             onDelete={() => setConfirmDelete(p.name)}
             onTerminal={() => handleTerminal(p.name)}
+            onTerminalVm={() => handleTerminalVm(p.name)}
+            shell={shell}
             onReclaim={() => setReclaimProfile(p.name)}
           />
         ))}

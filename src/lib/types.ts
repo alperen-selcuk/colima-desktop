@@ -8,6 +8,8 @@ export interface EnvInfo {
   kubectlAvailable: boolean;
   limactlAvailable: boolean;
   path: string;
+  /** Basename of the user's login shell (v0.2.4), e.g. "zsh". */
+  shell: string;
 }
 
 export interface Profile {
