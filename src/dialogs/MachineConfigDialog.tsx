@@ -590,9 +590,7 @@ export function MachineConfigDialog({
             source: {source.source}
           </span>
         )}
-        <button onClick={requestClose} className="ml-auto opacity-60 hover:opacity-100" aria-label="Close">
-          <X size={18} style={{ color: "var(--text-dim)" }} />
-        </button>
+        <Button variant="ghost" size="sm" onClick={requestClose} title="Close"><X size={14} /></Button>
       </div>
 
       {loading || !doc || !full ? (

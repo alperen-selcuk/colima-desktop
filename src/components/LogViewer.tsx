@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button } from "./Button";
 import { ArrowDownToLine, Trash2 } from "lucide-react";
 import { onLogEnd, onLogLine, startLogStream, stopLogStream } from "../lib/api";
 import type { LogTarget } from "../lib/types";
@@ -83,26 +84,19 @@ export function LogViewer({ profile, target }: { profile: string; target: LogTar
           className="flex-1 rounded border px-2 py-1 text-[12px] outline-none"
           style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
         />
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => setAutoScroll((v) => !v)}
-          title="Auto-scroll"
-          className="flex items-center gap-1 rounded border px-2 py-1 text-[11.5px]"
-          style={{
-            borderColor: autoScroll ? "var(--accent)" : "var(--border)",
-            color: autoScroll ? "var(--accent)" : "var(--text-dim)",
-            background: autoScroll ? "var(--accent-soft)" : "transparent",
-          }}
+          title="Keep the view scrolled to the newest line"
+          aria-pressed={autoScroll}
+          style={autoScroll ? { borderColor: "var(--accent)", color: "var(--accent-strong)", background: "var(--accent-soft)" } : undefined}
         >
           <ArrowDownToLine size={12} /> Auto-scroll
-        </button>
-        <button
-          onClick={() => setLines([])}
-          title="Clear"
-          className="flex items-center gap-1 rounded border px-2 py-1 text-[11.5px]"
-          style={{ borderColor: "var(--border)", color: "var(--text-dim)" }}
-        >
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => setLines([])} title="Clear output">
           <Trash2 size={12} /> Clear
-        </button>
+        </Button>
       </div>
       <div
         ref={scrollRef}

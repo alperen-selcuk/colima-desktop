@@ -160,13 +160,13 @@ export function VolumesPage({ profile }: { profile: string }) {
                     </Td>
                     <Td>
                       <Button
-                        variant="ghost"
+                        variant="danger-outline"
                         size="sm"
                         onClick={() => setConfirmRemove(v)}
                         disabled={v.inUse}
                         title={v.inUse ? "In use by a container — stop/remove it first" : "Delete"}
                       >
-                        <Trash2 size={11} style={{ color: v.inUse ? "var(--text-faint)" : "var(--danger)" }} />
+                        <Trash2 size={13} style={{ color: v.inUse ? "var(--text-faint)" : "var(--danger)" }} />
                       </Button>
                     </Td>
                   </Tr>

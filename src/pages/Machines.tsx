@@ -1,8 +1,8 @@
 import { TerminalSplitButton } from "../components/TerminalSplitButton";
 import { useShellName } from "../lib/useShellName";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Database, Eraser, HardDrive, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
+import { Cpu, Database, Eraser, HardDrive, MoreHorizontal, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
 import type { Profile } from "../lib/types";
 import { formatBytes } from "../lib/format";
@@ -71,82 +71,95 @@ function MachineCard({
     refetchInterval: 3000,
   });
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const pillStyle = {
+    background: busy ? "var(--warn-soft)" : running ? "var(--accent-soft)" : "var(--surface-3)",
+    color: busy ? "var(--warn)" : running ? "var(--accent-strong)" : "var(--text-dim)",
+  };
+  const stat = (icon: React.ReactNode, label: string, value: string) => (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex items-center gap-1 text-[10.5px]" style={{ color: "var(--text-faint)" }}>
+        {icon} {label}
+      </span>
+      <span className="truncate text-[13px] font-medium" style={{ color: "var(--text)" }}>
+        {value}
+      </span>
+    </div>
+  );
+
   return (
     <div
       onClick={onSelect}
-      className="flex cursor-pointer flex-col gap-3 rounded-lg border p-4 transition-colors"
+      className="flex min-w-0 cursor-pointer flex-col gap-4 rounded-lg border p-4 transition-colors"
       style={{
         background: "var(--surface-1)",
         borderColor: selected ? "var(--accent)" : "var(--border)",
+        boxShadow: selected ? "0 0 0 1px var(--accent)" : "0 1px 2px var(--shadow-color)",
       }}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <StatusDot tone={statusTone(profile.status)} pulse={running} />
-          <span className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>
+          <span className="truncate text-[15px] font-semibold" style={{ color: "var(--text)" }}>
             {profile.name}
           </span>
         </div>
-        <span
-          className="rounded px-1.5 py-0.5 text-[10.5px] font-medium"
-          style={{
-            background: busy ? "var(--warn-soft)" : running ? "var(--accent-soft)" : "var(--surface-3)",
-            color: busy ? "var(--warn)" : running ? "var(--accent)" : "var(--text-faint)",
-          }}
-        >
+        <span className="pill" style={pillStyle}>
           {busy ? (phase ? `${phase}…` : running ? "Stopping…" : "Starting…") : profile.status}
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-[11.5px]" style={{ color: "var(--text-dim)" }}>
-        <div className="flex items-center gap-1.5">
-          <Cpu size={12} style={{ color: "var(--text-faint)" }} /> {profile.cpus} CPU
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Database size={12} style={{ color: "var(--text-faint)" }} /> {formatBytes(profile.memory)}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <HardDrive size={12} style={{ color: "var(--text-faint)" }} /> {formatBytes(profile.disk)}
-        </div>
+      <div className="grid grid-cols-3 gap-3">
+        {stat(<Cpu size={11} />, "CPU", `${profile.cpus} cores`)}
+        {stat(<Database size={11} />, "Memory", formatBytes(profile.memory))}
+        {stat(<HardDrive size={11} />, "Disk", formatBytes(profile.disk))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: "var(--text-faint)" }}>
-        <span
-          className="rounded px-1.5 py-0.5 font-mono-app"
-          style={{ background: "var(--surface-2)" }}
-        >
-          {profile.arch}
-        </span>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="badge font-mono-app" title="Architecture">{profile.arch}</span>
         {profile.runtime && (
-          <span className="rounded px-1.5 py-0.5 font-mono-app" style={{ background: "var(--surface-2)" }}>
-            {profile.runtime}
-          </span>
+          <span className="badge font-mono-app" title="Container runtime">{profile.runtime}</span>
         )}
         {statusQuery.data?.kubernetes && (
           <span
-            className="rounded px-1.5 py-0.5 font-medium"
-            style={{ background: "var(--info-soft)", color: "var(--info)" }}
+            className="badge font-medium"
+            style={{ background: "var(--info-soft)", color: "var(--info)", borderColor: "transparent" }}
+            title="Kubernetes enabled"
           >
             k8s
           </span>
         )}
-        {profile.address && <span className="font-mono-app">{profile.address}</span>}
+        {profile.address && (
+          <span className="font-mono-app text-[11px]" style={{ color: "var(--text-faint)" }}>
+            {profile.address}
+          </span>
+        )}
       </div>
 
       <div
-        className="flex items-center gap-1.5 border-t pt-3"
+        className="flex flex-wrap items-center gap-2 border-t pt-3"
         style={{ borderColor: "var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {running ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
-              <Square size={11} /> Stop
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onConfigure} disabled={busy} title="Configure…">
-              <Settings size={11} /> Configure…
-            </Button>
-          </>
+          <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
+            <Square size={12} /> Stop
+          </Button>
         ) : (
           <SplitStartButton
             onQuickStart={onStart}
@@ -155,22 +168,60 @@ function MachineCard({
             disabled={busy}
           />
         )}
-        <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
-          <RotateCw size={11} />
+        <Button variant="secondary" size="sm" onClick={onConfigure} disabled={busy} title="Configure machine">
+          <Settings size={12} /> Configure
         </Button>
-        <TerminalSplitButton
-          shell={shell}
-          profile={profile.name}
-          vmEnabled={running}
-          onLocal={onTerminal}
-          onVm={onTerminalVm}
-        />
-        <Button variant="ghost" size="sm" onClick={onReclaim} disabled={busy || !running} title="Reclaim space…">
-          <Eraser size={11} />
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy} title="Delete" className="ml-auto">
-          <Trash2 size={11} style={{ color: "var(--danger)" }} />
-        </Button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart machine">
+            <RotateCw size={13} />
+          </Button>
+          <TerminalSplitButton
+            shell={shell}
+            profile={profile.name}
+            vmEnabled={running}
+            onLocal={onTerminal}
+            onVm={onTerminalVm}
+          />
+          <div className="relative" ref={menuRef}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMenuOpen((v) => !v)}
+              title="More actions"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <MoreHorizontal size={14} />
+            </Button>
+            {menuOpen && (
+              <div className="menu absolute right-0 top-full z-30 mt-1" role="menu">
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  disabled={busy || !running}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onReclaim();
+                  }}
+                >
+                  <Eraser size={13} /> Reclaim space…
+                </button>
+                <div className="menu-sep" />
+                <button
+                  className="menu-item menu-item-danger"
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onDelete();
+                  }}
+                >
+                  <Trash2 size={13} /> Delete machine…
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

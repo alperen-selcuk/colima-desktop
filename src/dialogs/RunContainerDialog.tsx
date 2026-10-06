@@ -44,9 +44,9 @@ function ListEditor({
             style={{ borderColor: "var(--border)", color: "var(--text)" }}
           >
             <span className="flex-1">{it}</span>
-            <button onClick={() => setItems(items.filter((_, idx) => idx !== i))}>
-              <X size={11} style={{ color: "var(--text-faint)" }} />
-            </button>
+            <Button variant="ghost" size="sm" title="Remove" onClick={() => setItems(items.filter((_, idx) => idx !== i))}>
+              <X size={13} />
+            </Button>
           </div>
         ))}
       </div>
@@ -60,7 +60,7 @@ function ListEditor({
           style={inputStyle}
         />
         <Button variant="secondary" size="sm" onClick={add}>
-          <Plus size={12} />
+          <Plus size={13} />
         </Button>
       </div>
     </div>

@@ -1,51 +1,48 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { Children, forwardRef, isValidElement, type ButtonHTMLAttributes } from "react";
+import { Loader2 } from "lucide-react";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
-type Size = "sm" | "md";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-outline";
+export type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: Size;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Square, bordered tile for icon-only buttons. Auto-enabled when every child is an element (no text). */
+  iconOnly?: boolean;
+  /** Shows a spinner and disables the button. */
+  loading?: boolean;
 }
 
-const VARIANT_STYLES: Record<Variant, { base: string; style: React.CSSProperties }> = {
-  primary: {
-    base: "hover:brightness-110 active:brightness-95",
-    style: { background: "var(--accent)", color: "var(--accent-contrast)", border: "1px solid transparent" },
-  },
-  secondary: {
-    base: "hover:brightness-110",
-    style: { background: "var(--surface-3)", color: "var(--text)", border: "1px solid var(--border-strong)" },
-  },
-  ghost: {
-    base: "hover:bg-[var(--surface-2)]",
-    style: { background: "transparent", color: "var(--text-dim)", border: "1px solid transparent" },
-  },
-  danger: {
-    base: "hover:brightness-110",
-    style: { background: "var(--danger)", color: "#fff", border: "1px solid transparent" },
-  },
-};
-
-const SIZE_STYLES: Record<Size, string> = {
-  sm: "px-2 py-1 text-[12px] gap-1",
-  md: "px-3 py-1.5 text-[13px] gap-1.5",
-};
-
+/**
+ * Shared button. Styles live in index.css (`.btn*`) so hover / active / focus /
+ * disabled behave identically in both themes. Icon-only buttons need a `title`;
+ * it is mirrored into `aria-label` automatically.
+ */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "secondary", size = "md", className = "", style, disabled, children, ...rest }, ref) => {
-    const v = VARIANT_STYLES[variant];
+  ({ variant = "secondary", size = "md", iconOnly, loading, className = "", disabled, children, title, ...rest }, ref) => {
+    const kids = Children.toArray(children);
+    const icon = iconOnly ?? (kids.length > 0 && kids.every((c) => isValidElement(c)));
     return (
       <button
         ref={ref}
-        disabled={disabled}
-        className={`inline-flex items-center justify-center rounded-md font-medium transition-[filter] disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap ${v.base} ${SIZE_STYLES[size]} ${className}`}
-        style={{ ...v.style, ...style }}
+        type="button"
+        disabled={disabled || loading}
+        aria-busy={loading || undefined}
+        title={title}
+        aria-label={rest["aria-label"] ?? (icon ? title : undefined)}
+        className={`btn btn-${variant} btn-${size}${icon ? " btn-icon" : ""} ${className}`}
         {...rest}
       >
-        {children}
+        {loading ? <Loader2 size={size === "sm" ? 12 : 14} className="spin" /> : null}
+        {loading && icon ? null : children}
       </button>
     );
   },
 );
 Button.displayName = "Button";
+
+/** Icon-only button: bordered tile + mandatory tooltip. */
+export const IconButton = forwardRef<HTMLButtonElement, Omit<ButtonProps, "iconOnly" | "title"> & { title: string }>(
+  ({ variant = "ghost", ...props }, ref) => <Button ref={ref} variant={variant} iconOnly {...props} />,
+);
+IconButton.displayName = "IconButton";

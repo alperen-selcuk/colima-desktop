@@ -47,9 +47,7 @@ export function KubeconfigHealthNotice({ profile, contextName, onDismiss }: Kube
         <Button variant="secondary" size="sm" onClick={() => setConfirmOpen(true)}>
           Fix
         </Button>
-        <button onClick={onDismiss} className="opacity-60 hover:opacity-100" aria-label="Dismiss" style={{ color: "var(--text-dim)" }}>
-          <X size={14} />
-        </button>
+        <Button variant="ghost" size="sm" onClick={onDismiss} title="Dismiss"><X size={14} /></Button>
       </div>
 
       <ConfirmDialog

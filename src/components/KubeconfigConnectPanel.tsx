@@ -131,14 +131,7 @@ export function KubeconfigConnectPanel({ profile, contextName }: { profile: stri
                   >
                     {s.text}
                   </code>
-                  <button
-                    onClick={() => copy(s.text, "command")}
-                    className="opacity-60 hover:opacity-100"
-                    aria-label={`Copy: ${s.label}`}
-                    style={{ color: "var(--text-dim)" }}
-                  >
-                    <ClipboardCopy size={13} />
-                  </button>
+                  <Button variant="ghost" size="sm" onClick={() => copy(s.text, "command")} title={`Copy: ${s.label}`}><ClipboardCopy size={14} /></Button>
                 </div>
               ))}
             </div>

@@ -316,7 +316,7 @@ function VariableField({
               {revealed ? <EyeOff size={12} /> : <Eye size={12} />}
             </Button>
             <Button variant="ghost" size="sm" onClick={onRegenerate} title="Regenerate">
-              <RefreshCw size={12} />
+              <RefreshCw size={13} />
             </Button>
           </>
         )}

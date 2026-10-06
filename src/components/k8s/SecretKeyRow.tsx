@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../Button";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import * as api from "../../lib/api";
 import { useToast } from "../Toasts";
@@ -69,23 +70,12 @@ export function SecretKeyRow({ profile, namespace, name, secretKey }: SecretKeyR
       >
         {revealed && value ? (value.binary ? `${value.value} (base64)` : value.value) : "••••••••••"}
       </span>
-      <button
-        onClick={handleReveal}
-        disabled={loading}
-        title={revealed ? "Hide" : "Reveal"}
-        className="flex-shrink-0 opacity-70 hover:opacity-100 disabled:opacity-40"
-        style={{ color: "var(--text-dim)" }}
-      >
+      <Button variant="ghost" size="sm" onClick={handleReveal} disabled={loading} title={revealed ? "Hide value" : "Reveal value"}>
         {revealed ? <EyeOff size={13} /> : <Eye size={13} />}
-      </button>
-      <button
-        onClick={handleCopy}
-        title="Copy"
-        className="flex-shrink-0 opacity-70 hover:opacity-100"
-        style={{ color: "var(--text-dim)" }}
-      >
+      </Button>
+      <Button variant="ghost" size="sm" onClick={handleCopy} title="Copy value">
         <Copy size={13} />
-      </button>
+      </Button>
     </div>
   );
 }

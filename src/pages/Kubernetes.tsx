@@ -472,20 +472,17 @@ export function KubernetesPage({
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
                 <div
-                  className="absolute right-0 top-full z-20 mt-1 min-w-[160px] rounded-md border py-1 shadow-lg"
-                  style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
+                  className="menu absolute right-0 top-full z-20 mt-1 min-w-[160px]" role="menu"
                 >
                   <button
                     onClick={() => setConfirmAction("reset")}
-                    className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--surface-2)]"
-                    style={{ color: "var(--text)" }}
+                    className="menu-item" role="menuitem"
                   >
                     Reset cluster
                   </button>
                   <button
                     onClick={() => setConfirmAction("delete")}
-                    className="block w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--surface-2)]"
-                    style={{ color: "var(--danger)" }}
+                    className="menu-item menu-item-danger" role="menuitem"
                   >
                     Disable Kubernetes
                   </button>
@@ -633,7 +630,7 @@ export function KubernetesPage({
                                   title="Logs"
                                   onClick={() => setSelection({ kind: "pod", namespace: p.namespace, name: p.name, containers: p.containers })}
                                 >
-                                  <ScrollText size={11} />
+                                  <ScrollText size={13} />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -646,7 +643,7 @@ export function KubernetesPage({
                                     )
                                   }
                                 >
-                                  <TerminalSquare size={11} />
+                                  <TerminalSquare size={13} />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -661,7 +658,7 @@ export function KubernetesPage({
                                     })
                                   }
                                 >
-                                  <ArrowRightLeft size={11} />
+                                  <ArrowRightLeft size={13} />
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -669,15 +666,15 @@ export function KubernetesPage({
                                   title="Edit"
                                   onClick={() => setEditTarget({ kind: "pod", namespace: p.namespace, name: p.name })}
                                 >
-                                  <Pencil size={11} />
+                                  <Pencil size={13} />
                                 </Button>
                                 <Button
-                                  variant="ghost"
+                                  variant="danger-outline"
                                   size="sm"
                                   title="Delete"
                                   onClick={() => setDeleteTarget({ kind: "pod", namespace: p.namespace, name: p.name })}
                                 >
-                                  <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                                  <Trash2 size={13} />
                                 </Button>
                               </div>
                             </Td>
@@ -738,7 +735,7 @@ export function KubernetesPage({
                               {d.replicas}x
                             </Button>
                             <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("deployment", d.namespace, d.name)}>
-                              <RotateCw size={11} />
+                              <RotateCw size={13} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -746,15 +743,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "deployment", namespace: d.namespace, name: d.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "deployment", namespace: d.namespace, name: d.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -812,7 +809,7 @@ export function KubernetesPage({
                               {d.replicas}x
                             </Button>
                             <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("statefulset", d.namespace, d.name)}>
-                              <RotateCw size={11} />
+                              <RotateCw size={13} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -820,15 +817,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "statefulset", namespace: d.namespace, name: d.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "statefulset", namespace: d.namespace, name: d.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -880,7 +877,7 @@ export function KubernetesPage({
                         <Td>
                           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="sm" title="Restart" onClick={() => handleRestart("daemonset", d.namespace, d.name)}>
-                              <RotateCw size={11} />
+                              <RotateCw size={13} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -888,15 +885,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "daemonset", namespace: d.namespace, name: d.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "daemonset", namespace: d.namespace, name: d.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -956,7 +953,7 @@ export function KubernetesPage({
                                 })
                               }
                             >
-                              <ArrowRightLeft size={11} />
+                              <ArrowRightLeft size={13} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -964,15 +961,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "service", namespace: s.namespace, name: s.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "service", namespace: s.namespace, name: s.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -1050,15 +1047,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "ingress", namespace: ing.namespace, name: ing.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "ingress", namespace: ing.namespace, name: ing.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -1116,15 +1113,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "configmap", namespace: cm.namespace, name: cm.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "configmap", namespace: cm.namespace, name: cm.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>
@@ -1184,15 +1181,15 @@ export function KubernetesPage({
                               title="Edit"
                               onClick={() => setEditTarget({ kind: "secret", namespace: s.namespace, name: s.name })}
                             >
-                              <Pencil size={11} />
+                              <Pencil size={13} />
                             </Button>
                             <Button
-                              variant="ghost"
+                              variant="danger-outline"
                               size="sm"
                               title="Delete"
                               onClick={() => setDeleteTarget({ kind: "secret", namespace: s.namespace, name: s.name })}
                             >
-                              <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                              <Trash2 size={13} />
                             </Button>
                           </div>
                         </Td>

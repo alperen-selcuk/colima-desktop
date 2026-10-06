@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "./Button";
 import { useQuery } from "@tanstack/react-query";
 import { TerminalSquare, X } from "lucide-react";
 import * as api from "../lib/api";
@@ -48,17 +49,8 @@ export function ContainerDetail({ profile, container, stats, onClose }: Containe
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => dock.openTerminalTab({ kind: "container", id: container.id }, profile)}
-            title="Open shell in dock"
-            className="opacity-60 hover:opacity-100 p-1"
-            style={{ color: "var(--text-dim)" }}
-          >
-            <TerminalSquare size={14} />
-          </button>
-          <button onClick={onClose} className="opacity-60 hover:opacity-100 p-1" style={{ color: "var(--text-dim)" }}>
-            <X size={15} />
-          </button>
+          <Button variant="ghost" size="sm" onClick={() => dock.openTerminalTab({ kind: "container", id: container.id }, profile)} title="Open shell in dock"><TerminalSquare size={14} /></Button>
+          <Button variant="ghost" size="sm" onClick={onClose} title="Close"><X size={14} /></Button>
         </div>
       </div>
 
