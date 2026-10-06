@@ -146,7 +146,7 @@ export function formatIngressRule(rule: K8sIngressRule): string {
  * confirm (as opposed to a plain confirm button): true for every deployment
  * regardless of namespace, and for any namespaced object in `kube-system`. */
 export function requiresTypedDeleteConfirm(kind: K8sKind, namespace: string | null): boolean {
-  if (kind === "deployment") return true;
+  if (kind === "deployment" || kind === "statefulset" || kind === "daemonset") return true;
   if (namespace === "kube-system") return true;
   return false;
 }

@@ -16,6 +16,8 @@ pub struct AppState {
     docker_sockets: Mutex<HashMap<String, (String, Instant)>>,
     pub log_streams: Mutex<HashMap<String, Child>>,
     pub pty_sessions: Mutex<HashMap<String, PtySession>>,
+    /// Running `kubectl port-forward` children (v0.2.5, §6.10).
+    pub port_forwards: Mutex<HashMap<String, crate::portforward::ForwardEntry>>,
     /// Per-session "fresh" flags for the app-managed kubeconfig (§2.1a).
     pub kubeconfig: KubeconfigState,
     /// Per-profile cached compose plugin-vs-standalone resolution (§6.7).

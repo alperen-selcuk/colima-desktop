@@ -501,7 +501,7 @@ pub fn is_port_free(port: u16, taken: &HashSet<u16>) -> bool {
 
 /// Live bind test: true if `port` can be bound on both 127.0.0.1 and
 /// 0.0.0.0 (i.e. genuinely free at the OS level right now).
-fn port_bind_free(port: u16) -> bool {
+pub(crate) fn port_bind_free(port: u16) -> bool {
     TcpListener::bind(("127.0.0.1", port)).is_ok() && TcpListener::bind(("0.0.0.0", port)).is_ok()
 }
 

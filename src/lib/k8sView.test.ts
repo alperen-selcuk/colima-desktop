@@ -158,6 +158,11 @@ describe("requiresTypedDeleteConfirm", () => {
     expect(requiresTypedDeleteConfirm("deployment", "kube-system")).toBe(true);
   });
 
+  it("requires typing for statefulsets and daemonsets", () => {
+    expect(requiresTypedDeleteConfirm("statefulset", "default")).toBe(true);
+    expect(requiresTypedDeleteConfirm("daemonset", "default")).toBe(true);
+  });
+
   it("requires typing for anything in kube-system", () => {
     expect(requiresTypedDeleteConfirm("pod", "kube-system")).toBe(true);
     expect(requiresTypedDeleteConfirm("configmap", "kube-system")).toBe(true);

@@ -1,7 +1,7 @@
 Kubernetes icons — attribution
 ================================
 
-The SVG icons in this directory (pod.svg, deploy.svg, svc.svg, ing.svg, cm.svg,
+The SVG icons in this directory (pod.svg, deploy.svg, sts.svg, ds.svg, svc.svg, ing.svg, cm.svg,
 secret.svg, node.svg, ns.svg) are copied unmodified from the official
 Kubernetes community icon set:
 
