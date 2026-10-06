@@ -16,13 +16,19 @@ interface Toast {
   kind: ToastKind;
   title: string;
   detail?: string;
+  action?: ToastAction;
+}
+
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
 }
 
 interface ToastContextValue {
-  push: (kind: ToastKind, title: string, detail?: string) => void;
-  success: (title: string, detail?: string) => void;
-  error: (title: string, detail?: string) => void;
-  info: (title: string, detail?: string) => void;
+  push: (kind: ToastKind, title: string, detail?: string, action?: ToastAction) => void;
+  success: (title: string, detail?: string, action?: ToastAction) => void;
+  error: (title: string, detail?: string, action?: ToastAction) => void;
+  info: (title: string, detail?: string, action?: ToastAction) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -48,10 +54,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const push = useCallback(
-    (kind: ToastKind, title: string, detail?: string) => {
+    (kind: ToastKind, title: string, detail?: string, action?: ToastAction) => {
       const id = nextId.current++;
-      setToasts((prev) => [...prev, { id, kind, title, detail }]);
-      window.setTimeout(() => dismiss(id), kind === "error" ? 7000 : 4000);
+      setToasts((prev) => [...prev, { id, kind, title, detail, action }]);
+      window.setTimeout(() => dismiss(id), kind === "error" ? 7000 : action ? 10000 : 4000);
     },
     [dismiss],
   );
@@ -59,9 +65,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ToastContextValue>(
     () => ({
       push,
-      success: (title, detail) => push("success", title, detail),
-      error: (title, detail) => push("error", title, detail),
-      info: (title, detail) => push("info", title, detail),
+      success: (title, detail, action) => push("success", title, detail, action),
+      error: (title, detail, action) => push("error", title, detail, action),
+      info: (title, detail, action) => push("info", title, detail, action),
     }),
     [push],
   );
@@ -91,6 +97,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   <div className="mt-0.5 text-[12px] break-words" style={{ color: "var(--text-dim)" }}>
                     {t.detail}
                   </div>
+                )}
+                {t.action && (
+                  <button
+                    onClick={() => {
+                      t.action?.onClick();
+                      dismiss(t.id);
+                    }}
+                    className="mt-1.5 rounded border px-2 py-0.5 text-[12px] font-medium hover:bg-[var(--surface-3)]"
+                    style={{ borderColor: "var(--border-strong)", color: "var(--text)" }}
+                  >
+                    {t.action.label}
+                  </button>
                 )}
               </div>
               <button

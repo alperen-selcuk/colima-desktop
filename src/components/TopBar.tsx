@@ -1,9 +1,10 @@
-import { ChevronDown, RotateCw, Settings, Square, TerminalSquare } from "lucide-react";
+import { Loader2, ChevronDown, RotateCw, Settings, Square, TerminalSquare } from "lucide-react";
 import { useState } from "react";
 import type { Profile, ProfileStatus } from "../lib/types";
 import { StatusDot, statusTone } from "./StatusDot";
 import { Button } from "./Button";
 import { SplitStartButton } from "./SplitStartButton";
+import { opLabel, type ActiveOp } from "../lib/opPhase";
 
 interface TopBarProps {
   profiles: Profile[];
@@ -12,6 +13,8 @@ interface TopBarProps {
   status: ProfileStatus | null | undefined;
   currentProfile: Profile | undefined;
   busy: boolean;
+  /** Lifecycle operations in flight for any profile (global activity indicator). */
+  ops?: ActiveOp[];
   onStart: () => void;
   onConfigure: () => void;
   onQuickStartOptions: () => void;
@@ -27,6 +30,7 @@ export function TopBar({
   status,
   currentProfile,
   busy,
+  ops = [],
   onStart,
   onConfigure,
   onQuickStartOptions,
@@ -96,6 +100,17 @@ export function TopBar({
       >
         {pillLabel}
       </div>
+
+      {ops.length > 0 && (
+        <div
+          className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+          style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
+          title="Operation in progress — see the Output tab for details"
+        >
+          <Loader2 size={11} className="spin" />
+          {ops.map(opLabel).join(" · ")}
+        </div>
+      )}
 
       {status?.kubernetes && (
         <div

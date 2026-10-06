@@ -21,6 +21,23 @@ pub struct OpLog {
     pub line: String,
 }
 
+/// Event payload for `colima-op-end`: emitted once when a streamed operation
+/// finishes (`ok`), or fails (`error` holds the friendly message).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpEnd {
+    pub profile: String,
+    pub op: String,
+    pub ok: bool,
+    pub error: Option<String>,
+}
+
+/// After the child has exited, how long we keep draining its pipes. A
+/// daemonised grandchild (e.g. lima's hostagent, started by `colima start`)
+/// inherits stdout/stderr and keeps the pipes open indefinitely, so waiting
+/// for EOF would hang the command (and the UI's "Working…") forever.
+const DRAIN_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// Build a [`Command`] with a clean environment: `DOCKER_HOST`,
 /// `DOCKER_CONTEXT`, and `KUBECONFIG` removed so nothing can override the
 /// explicit `-H` socket / `--context`/`--kubeconfig` flags we always pass.
@@ -234,7 +251,7 @@ pub async fn run_streaming_with_env(
     drop(tx);
 
     let mut tail: std::collections::VecDeque<String> = std::collections::VecDeque::new();
-    while let Some(line) = rx.recv().await {
+    let mut record = |line: String| {
         if tail.len() >= TAIL_LINES {
             tail.pop_front();
         }
@@ -247,13 +264,40 @@ pub async fn run_streaming_with_env(
                 line,
             },
         );
+    };
+
+    // Read lines until EOF, but stop shortly after the process itself exits
+    // even if a background grandchild still holds the pipes open.
+    let mut exit_status: Option<std::io::Result<std::process::ExitStatus>> = None;
+    let mut drain_deadline: Option<tokio::time::Instant> = None;
+    loop {
+        if let Some(deadline) = drain_deadline {
+            match tokio::time::timeout_at(deadline, rx.recv()).await {
+                Ok(Some(line)) => record(line),
+                _ => break,
+            }
+        } else {
+            tokio::select! {
+                line = rx.recv() => match line {
+                    Some(line) => record(line),
+                    None => break,
+                },
+                st = child.wait() => {
+                    exit_status = Some(st);
+                    drain_deadline = Some(tokio::time::Instant::now() + DRAIN_GRACE);
+                }
+            }
+        }
     }
+    stdout_task.abort();
+    stderr_task.abort();
 
-    let _ = stdout_task.await;
-    let _ = stderr_task.await;
-
-    let status = child.wait().await.map_err(|e| e.to_string())?;
-    if status.success() {
+    let status = match exit_status {
+        Some(st) => st,
+        None => child.wait().await,
+    }
+    .map_err(|e| e.to_string())?;
+    let result = if status.success() {
         Ok(())
     } else {
         let lines: Vec<String> = tail.into_iter().collect();
@@ -261,7 +305,17 @@ pub async fn run_streaming_with_env(
             friendly_error(&lines, cfg!(target_os = "macos")),
             profile,
         ))
-    }
+    };
+    let _ = app.emit(
+        "colima-op-end",
+        OpEnd {
+            profile: profile.to_string(),
+            op: op.to_string(),
+            ok: result.is_ok(),
+            error: result.as_ref().err().cloned(),
+        },
+    );
+    result
 }
 
 /// Extract the value of `msg="..."` from a logfmt-style line (handles `\"` escapes).

@@ -27,6 +27,7 @@ import { K8sDetail } from "../components/K8sDetail";
 import { K8sIcon, KIND_ACCENT_VAR, KIND_ACCENT_SOFT_VAR } from "../components/k8s/K8sIcon";
 import { UsageBar } from "../components/k8s/UsageBar";
 import { K8sDeleteConfirm } from "../components/k8s/K8sDeleteConfirm";
+import { KubeconfigConnectPanel } from "../components/KubeconfigConnectPanel";
 import { KubeconfigHealthNotice } from "../components/KubeconfigHealthNotice";
 import { QueryErrorBanner } from "../components/QueryErrorBanner";
 import { ScaleDialog } from "../dialogs/ScaleDialog";
@@ -400,6 +401,8 @@ export function KubernetesPage({
             );
           })}
         </div>
+
+        {enabled && <KubeconfigConnectPanel profile={profile} contextName={contextName} />}
 
         {showHealthNotice && (
           <div className="px-4 pt-3">

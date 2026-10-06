@@ -32,8 +32,8 @@ bozmaz); yani tap'i istediğiniz zaman kurabilirsiniz.
 ### 3. Yeni bir sürüm yayınlama
 
 ```sh
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 Bu, `.github/workflows/release.yml`'i tetikler:
@@ -59,7 +59,7 @@ brew install colima-desktop
 "untrusted tap" hatasını verdiği durumlarda gereklidir; bkz. `docs/INSTALL.md`.)
 
 Belirli bir tag için manuel tetiklemek isterseniz: Actions → "Update Homebrew Cask" → Run workflow →
-`tag` alanına `v0.2.2` girin.
+`tag` alanına `v0.2.3` girin.
 
 ### 4. (İsteğe bağlı) Apple Developer ID imzalama/notarization
 
@@ -132,8 +132,8 @@ break the release flow), so you can wire up the tap whenever you're ready.
 ### 3. Publishing a new release
 
 ```sh
-git tag v0.2.2
-git push origin v0.2.2
+git tag v0.2.3
+git push origin v0.2.3
 ```
 
 This triggers `.github/workflows/release.yml`:
@@ -159,7 +159,7 @@ will work. (`brew trust` is needed the first time you tap/install this cask on H
 refuses to load casks from untrusted third-party taps until trusted; see `docs/INSTALL.md`.)
 
 To trigger it manually for a specific tag: Actions → "Update Homebrew Cask" → Run workflow → enter
-`v0.2.2` in the `tag` field.
+`v0.2.3` in the `tag` field.
 
 ### 4. (Optional) Apple Developer ID signing/notarization
 

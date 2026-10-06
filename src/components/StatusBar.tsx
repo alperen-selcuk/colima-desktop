@@ -1,16 +1,19 @@
 import { Loader2, TerminalSquare } from "lucide-react";
 import type { ProfileStatus } from "../lib/types";
 import { formatBytes } from "../lib/format";
+import { opLabel, type ActiveOp } from "../lib/opPhase";
 
 interface StatusBarProps {
   status: ProfileStatus | null | undefined;
   running: boolean;
   busy: boolean;
+  /** Lifecycle operations in flight, one per profile (v0.2.3). */
+  ops?: ActiveOp[];
   dockOpen: boolean;
   onToggleDock: () => void;
 }
 
-export function StatusBar({ status, running, busy, dockOpen, onToggleDock }: StatusBarProps) {
+export function StatusBar({ status, running, busy, ops = [], dockOpen, onToggleDock }: StatusBarProps) {
   const text = !running
     ? "Engine stopped"
     : status
@@ -22,8 +25,14 @@ export function StatusBar({ status, running, busy, dockOpen, onToggleDock }: Sta
       className="flex h-7 flex-shrink-0 items-center gap-2 border-t px-4 text-[11.5px]"
       style={{ background: "var(--surface-1)", borderColor: "var(--border)", color: "var(--text-faint)" }}
     >
-      {busy && <Loader2 size={11} className="spin" style={{ color: "var(--accent)" }} />}
-      <span>{text}</span>
+      {(busy || ops.length > 0) && <Loader2 size={11} className="spin" style={{ color: "var(--accent)" }} />}
+      {ops.length > 0 ? (
+        <span data-testid="status-activity" className="font-medium" style={{ color: "var(--accent)" }}>
+          {ops.map(opLabel).join("  ·  ")}…
+        </span>
+      ) : (
+        <span>{text}</span>
+      )}
       {status?.ipAddress && (
         <span className="font-mono-app" style={{ color: "var(--text-faint)" }}>
           {status.ipAddress}

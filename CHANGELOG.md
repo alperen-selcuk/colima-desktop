@@ -2,6 +2,25 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.3] - 2026-10-06
+
+### Added
+
+- **Kubernetes "Connect" panel**: context name, API server, Copy kubeconfig, Save kubeconfig as…, Merge into
+  `~/.kube/config` (backup first, only `colima*` entries, never changes current-context) and copyable `kubectl`
+  snippets. New commands `k8s_kubeconfig`, `k8s_export_kubeconfig`, `k8s_merge_kubeconfig`.
+- **Operation progress everywhere**: status bar and top bar show the running op with a human phase parsed from colima's
+  output ("Starting VM", "Starting Docker", "Starting Kubernetes", "Updating kubeconfig"); Machines cards show it too.
+  On completion a toast ("default is running · Kubernetes ready") offers **Open Kubernetes**. New `colima-op-end` event.
+- Configuration editor: **← Machines** home button; the editor can always be closed while an operation keeps running.
+
+### Fixed
+
+- Running machines showed as stopped (Kubernetes page "needs the machine to be running", sidebar "off") with newer colima versions, which omit empty fields such as `ip_address` from `colima status --json`; status parsing now tolerates missing fields.
+
+- Save & Start left the configuration editor on "Working…" forever: the streamed `colima start` never resolved because a
+  background process kept its output pipes open after colima exited. Streaming now stops shortly after the process exits.
+
 ## [0.2.2] - 2026-10-06
 
 ### Added

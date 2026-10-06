@@ -245,7 +245,11 @@ export interface OpLog { profile: string; op: string; line: string; }
 `TerminalTarget = {kind:"host"} | {kind:"vm"} | {kind:"container", id} | {kind:"pod", namespace, pod, container: string \| null}`.
 The old `open_terminal` (external Terminal.app / x-terminal-emulator) is **removed** — nothing opens an OS terminal window anymore.
 
-Events: `colima-op-log` (OpLog), `log-line` (LogEvent), `log-end` (LogEnd), `profiles-changed` (payload `null`, emitted after any lifecycle op finishes, success or failure),
+| `k8s_kubeconfig` | `profile` | `KubeconfigInfo = { path, context, server, content }` | v0.2.3. Refreshes (via `ensure_fresh`) and returns the app-managed kubeconfig (`<app data>/kube/<profile>.yaml`) with its context name and API server URL. Contains credentials: never logged. |
+| `k8s_export_kubeconfig` | `profile, path` | `string` (path written) | v0.2.3. Writes the app-managed kubeconfig to `path` with mode 0600 (atomic). Rejects relative paths, directories and the user's own kubeconfig (`$KUBECONFIG` first entry or `~/.kube/config`). |
+| `k8s_merge_kubeconfig` | `profile` | `RepairResult { backupPath }` | v0.2.3. Same logic as `repair_host_kubeconfig` (backup first, only the `colima*` user/cluster entries, never `current-context`) and additionally adds the `contexts.<ctx>` entry when it does not exist yet. `backupPath` is `""` when no kubeconfig existed. Explicit user click + confirm dialog only. |
+
+Events: `colima-op-log` (OpLog), `colima-op-end` (`OpEnd = { profile, op, ok, error }`, v0.2.3: emitted once when a streamed op finishes), `log-line` (LogEvent), `log-end` (LogEnd), `profiles-changed` (payload `null`, emitted after any lifecycle op finishes, success or failure),
 `terminal-output` (`{ sessionId: string, data: string /* base64 of raw PTY bytes */ }`), `terminal-exit` (`{ sessionId: string, code: number | null }`).
 Terminal sessions live in managed state `Mutex<HashMap<String, Session>>`; all are killed on app quit.
 
@@ -292,6 +296,7 @@ Relative ages computed client-side from ISO timestamps (e.g. `5m`, `3h`, `2d`).
 A resizable bottom panel (drag handle, height persisted in localStorage, min 140px, max 70% of window), toggled with
 `Ctrl+\`` (both platforms) and a Terminal button in the status bar. It has tabs:
 - **Output** (always first, not closable): the former OpConsole — streamed `colima-op-log` lines. The dock auto-opens on this tab when a lifecycle op starts.
+- **Activity indicator (v0.2.3):** the status bar and top bar show every running lifecycle op as `<profile> · <phase>`; the phase is parsed from colima's log lines by the pure helper `src/lib/opPhase.ts` (`starting colima` → Starting VM, `context=docker` → Starting Docker, `context=kubernetes` → Starting Kubernetes, `updating config` → Updating kubeconfig, `done` → Done). Machine cards show the phase while busy. On `colima-op-end` success a toast appears ("default is running · Kubernetes ready" with an **Open Kubernetes** action when k3s was part of the start); failures are toasted by the caller with the friendly error. Ops whose end event is missed are dropped once the profile is no longer busy.
 - **Terminal tabs** (closable, `×`): each is an xterm.js instance (`@xterm/xterm`, `@xterm/addon-fit`, `@xterm/addon-web-links`)
   bound to one `terminal_open` session. Title: `zsh` / `vm: default` / `ctr: <name>` / `pod: <ns>/<pod>`. Exited sessions show
   `[process exited with code N]` and stay open until closed. Input → `terminal_write`; FitAddon + ResizeObserver → `terminal_resize`;
@@ -356,6 +361,12 @@ Warnings banner when changing `arch`, `runtime` or `vmType` of an existing machi
 Footer buttons: `Reset to template`, `Save`, primary `Save & Start` (stopped) / `Save & Restart` (running; stop then start).
 Entry points: Machines card Start becomes a split button (`Start` | ▾ `Start with configuration…`), running cards get `Configure…`,
 "New machine" opens this dialog with a name field (source template). Top bar gets the same split button.
+**v0.2.3 never-trapped rule:** the editor has a `← Machines` home button at the bottom-left of the section nav and the header `×`
+and `Cancel`/`Close` are always enabled. While Save & Start / Save & Restart runs, the footer shows the live phase; closing keeps the
+operation running in the backend (output keeps streaming to the Output dock) and toasts "Still starting <profile> in the background — see Output".
+The busy flag resets when the start/stop promise settles AND on `colima-op-end`. Root cause of the v0.2.2 "stuck Working…": `run_streaming`
+waited for EOF on the child's stdout/stderr, which a daemonised grandchild (lima hostagent / k3s helpers) keeps open after `colima start`
+exits; it now stops draining shortly (1.5s) after the process exits.
 
 ### 6.5 Kubernetes enablement flow & k3s version picker
 
@@ -369,6 +380,12 @@ Kubernetes page states (selected profile):
   **Enable permanently…** → configuration editor on the Kubernetes section with `enabled: true` pre-applied → Save & Restart.
 - Never call `kubernetes_action` when the machine isn't running (also guard in the backend: return a friendly error
   "`<profile>` is not running — start it first" instead of colima's raw output).
+- **Connect panel (v0.2.3):** when Kubernetes is running, a collapsible **Connect** card under the Kubernetes tabs shows the context
+  (`colima` / `colima-<profile>`), the API server URL and the app-managed kubeconfig path, with actions **Copy kubeconfig**
+  (`k8s_kubeconfig`), **Save kubeconfig as…** (tauri dialog save → `k8s_export_kubeconfig`, mode 0600, never `~/.kube/config`) and
+  **Merge into ~/.kube/config** (`k8s_merge_kubeconfig`, confirm dialog, backup first, only `colima*` entries, never current-context).
+  Copyable snippets: `kubectl --context <ctx> get pods -A`, `export KUBECONFIG=<saved path>` (after a save), and a note that colima's
+  `autoActivate` may switch kubectl's current-context to colima on start (`kubectl config use-context <name>` switches back).
 The configuration editor accepts `initialSection` and `initialPatch` (list of `{path, value}` applied via `setIn` on open, counted as changes).
 
 k3s version picker — new backend command:

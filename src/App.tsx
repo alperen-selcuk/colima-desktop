@@ -19,6 +19,7 @@ import { VolumesPage } from "./pages/Volumes";
 import { MarketplacePage } from "./pages/Marketplace";
 import { KubernetesPage } from "./pages/Kubernetes";
 import { SetupPage } from "./pages/Setup";
+import { useOps } from "./lib/useOps";
 
 function AppShell() {
   const [page, setPage] = useState<Page>("machines");
@@ -51,6 +52,31 @@ function AppShell() {
   });
 
   useReconcileProfiles(profilesQuery.data);
+
+  const busyForOps = busyQuery.data ?? [];
+  const ops = useOps({
+    busyProfiles: busyForOps,
+    onSuccess: (title, openKubernetes, profile) => {
+      queryClient.invalidateQueries({ queryKey: ["profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["profileStatus"] });
+      queryClient.invalidateQueries({ queryKey: ["busyProfiles"] });
+      toast.success(
+        title,
+        undefined,
+        openKubernetes
+          ? {
+              label: "Open Kubernetes",
+              onClick: () => {
+                setSelected(profile);
+                setPage("kubernetes");
+                setConfigDialog(undefined);
+              },
+            }
+          : undefined,
+      );
+    },
+  });
+  const opList = Object.values(ops);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -152,7 +178,6 @@ function AppShell() {
     if (!selected) return;
     try {
       await api.restartProfile(selected);
-      toast.success(`${selected} restarting`);
     } catch (e) {
       toast.error(`Failed to restart ${selected}`, String(e));
     }
@@ -182,6 +207,7 @@ function AppShell() {
           <MachinesPage
             profiles={profiles}
             busyProfiles={busyProfiles}
+            ops={ops}
             selected={selected}
             onSelect={setSelected}
             onStartProfile={(name) => setStartDialogProfile(name)}
@@ -217,7 +243,7 @@ function AppShell() {
         return null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, selected, profiles, busyProfiles, isBusy, statusQuery.data, envQuery.data]);
+  }, [page, selected, profiles, busyProfiles, ops, isBusy, statusQuery.data, envQuery.data]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden" style={{ background: "var(--surface-0)" }}>
@@ -230,6 +256,7 @@ function AppShell() {
           status={statusQuery.data}
           currentProfile={currentProfile}
           busy={isBusy}
+          ops={opList}
           onStart={handleStart}
           onConfigure={handleConfigure}
           onQuickStartOptions={handleStart}
@@ -243,6 +270,7 @@ function AppShell() {
           status={statusQuery.data}
           running={currentProfile?.status === "Running"}
           busy={isBusy}
+          ops={opList}
           dockOpen={dock.open}
           onToggleDock={dock.toggle}
         />
@@ -270,6 +298,11 @@ function AppShell() {
         initialPatch={configDialog?.initialPatch}
         onOpenVolumes={openVolumes}
         onClose={() => setConfigDialog(undefined)}
+        onHome={() => {
+          setConfigDialog(undefined);
+          setPage("machines");
+        }}
+        activeOp={configDialog?.profile != null ? ops[configDialog.profile] : undefined}
         onSaved={(name) => {
           setSelected(name);
           queryClient.invalidateQueries({ queryKey: ["profiles"] });

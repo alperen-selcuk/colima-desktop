@@ -26,20 +26,32 @@ pub struct Profile {
 
 /// Raw shape of `colima status --json -p <p>` (snake_case on the wire).
 #[derive(Debug, Clone, Deserialize)]
+// Newer colima versions omit empty fields (e.g. `ip_address`), so everything
+// except the docker socket tolerates being absent.
 struct RawProfileStatus {
+    #[serde(default)]
     display_name: String,
+    #[serde(default)]
     driver: String,
+    #[serde(default)]
     arch: String,
+    #[serde(default)]
     runtime: String,
+    #[serde(default)]
     mount_type: String,
+    #[serde(default)]
     ip_address: String,
+    #[serde(default)]
     docker_socket: String,
     #[serde(default)]
     containerd_socket: Option<String>,
     #[serde(default)]
     kubernetes: bool,
+    #[serde(default)]
     cpu: u32,
+    #[serde(default)]
     memory: u64,
+    #[serde(default)]
     disk: u64,
 }
 
