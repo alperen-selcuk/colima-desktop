@@ -35,6 +35,7 @@ import type {
   Profile,
   ProfileConfig,
   ConfigIssue,
+  DiskInfo,
   ProfileConfigRaw,
   ProfileStatus,
   PruneTarget,
@@ -139,6 +140,11 @@ async function mockInvoke<T>(
     case "restart_profile":
     case "delete_profile":
     case "kubernetes_action":
+      return undefined as unknown as T;
+    case "profile_disk_info":
+      return { exists: true, sizeGiB: 40, usedOnHostBytes: 12 * 1024 ** 3 } as unknown as T;
+    case "recreate_profile":
+    case "reclaim_space":
       return undefined as unknown as T;
     case "busy_profiles":
       return [] as unknown as T;
@@ -415,6 +421,20 @@ export function restartProfile(profile: string): Promise<void> {
 
 export function deleteProfile(profile: string): Promise<void> {
   return invoke<void>("delete_profile", { profile });
+}
+
+export function profileDiskInfo(profile: string): Promise<DiskInfo> {
+  return invoke<DiskInfo>("profile_disk_info", { profile });
+}
+
+/** Delete + recreate the machine with `configContent` (the only way to shrink a disk). Streams as op "recreate". */
+export function recreateProfile(profile: string, configContent: string): Promise<void> {
+  return invoke<void>("recreate_profile", { profile, configContent });
+}
+
+/** `docker system prune -af` + `fstrim` inside the VM. Streams as op "reclaim". */
+export function reclaimSpace(profile: string): Promise<void> {
+  return invoke<void>("reclaim_space", { profile });
 }
 
 export function kubernetesAction(

@@ -2,6 +2,22 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.1] - 2026-10-06
+
+### Fixed
+
+- **Disk shrink no longer breaks the VM**: lowering `disk` below the existing size (which Lima/colima cannot
+  apply and which made `colima start` fail) is now a blocking error in the configuration editor, with a
+  **Recreate with smaller disk…** option. A failed start with "error at 'starting'" now explains the cause.
+
+### Added
+
+- **Recreate with smaller disk**: stops, deletes and recreates the machine from the edited configuration
+  (confirm dialog, type the profile name).
+- **Reclaim space**: from the Machines card and the Resources section, prunes unused Docker data (not volumes)
+  and trims the VM disk, then reports how much space was freed on your Mac.
+- `profile_disk_info`, `recreate_profile`, `reclaim_space` commands.
+
 ## [0.2.0] - 2026-10-06
 
 ### Fixed

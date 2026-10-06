@@ -287,6 +287,13 @@ export interface OpLog {
   line: string;
 }
 
+/** `profile_disk_info`: the VM disk file's real size and what it occupies on the host (§6.4). */
+export interface DiskInfo {
+  exists: boolean;
+  sizeGiB: number | null;
+  usedOnHostBytes: number | null;
+}
+
 export type ConfigSource = "profile" | "template" | "builtin";
 
 export interface ProfileConfigRaw {

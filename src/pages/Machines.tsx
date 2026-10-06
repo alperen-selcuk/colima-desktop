@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Database, HardDrive, Plus, RotateCw, Settings, Square, TerminalSquare, Trash2 } from "lucide-react";
+import { Cpu, Database, Eraser, HardDrive, Plus, RotateCw, Settings, Square, TerminalSquare, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
 import type { Profile } from "../lib/types";
 import { formatBytes } from "../lib/format";
 import { StatusDot, statusTone } from "../components/StatusDot";
 import { Button } from "../components/Button";
+import { ReclaimDialog } from "../dialogs/ReclaimDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SplitStartButton } from "../components/SplitStartButton";
 import { useToast } from "../components/Toasts";
@@ -20,6 +21,7 @@ interface MachinesPageProps {
   onConfigureProfile: (name: string) => void;
   onQuickStartOptions: (name: string) => void;
   onNewMachine: () => void;
+  onOpenVolumes: (name: string) => void;
 }
 
 function MachineCard({
@@ -34,6 +36,7 @@ function MachineCard({
   onRestart,
   onDelete,
   onTerminal,
+  onReclaim,
 }: {
   profile: Profile;
   busy: boolean;
@@ -46,6 +49,7 @@ function MachineCard({
   onRestart: () => void;
   onDelete: () => void;
   onTerminal: () => void;
+  onReclaim: () => void;
 }) {
   const running = profile.status === "Running";
   const statusQuery = useQuery({
@@ -144,6 +148,9 @@ function MachineCard({
         <Button variant="ghost" size="sm" onClick={onTerminal} disabled={!running} title="Terminal">
           <TerminalSquare size={11} />
         </Button>
+        <Button variant="ghost" size="sm" onClick={onReclaim} disabled={busy || !running} title="Reclaim space…">
+          <Eraser size={11} />
+        </Button>
         <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy} title="Delete" className="ml-auto">
           <Trash2 size={11} style={{ color: "var(--danger)" }} />
         </Button>
@@ -161,12 +168,14 @@ export function MachinesPage({
   onConfigureProfile,
   onQuickStartOptions,
   onNewMachine,
+  onOpenVolumes,
 }: MachinesPageProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const dock = useDock();
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState<string | null>(null);
+  const [reclaimProfile, setReclaimProfile] = useState<string | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["profiles"] });
@@ -233,6 +242,7 @@ export function MachinesPage({
             onRestart={() => handleRestart(p.name)}
             onDelete={() => setConfirmDelete(p.name)}
             onTerminal={() => handleTerminal(p.name)}
+            onReclaim={() => setReclaimProfile(p.name)}
           />
         ))}
         {profiles.length === 0 && (
@@ -244,6 +254,13 @@ export function MachinesPage({
           </div>
         )}
       </div>
+
+      <ReclaimDialog
+        open={!!reclaimProfile}
+        profile={reclaimProfile ?? ""}
+        onClose={() => setReclaimProfile(null)}
+        onOpenVolumes={onOpenVolumes}
+      />
 
       <ConfirmDialog
         open={!!confirmDelete}

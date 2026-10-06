@@ -6,6 +6,7 @@
 mod colima;
 mod compose;
 mod config_file;
+mod disk;
 mod docker;
 mod env;
 mod exec;
@@ -44,6 +45,9 @@ pub fn run() {
             colima::delete_profile,
             colima::kubernetes_action,
             colima::busy_profiles,
+            disk::profile_disk_info,
+            disk::recreate_profile,
+            disk::reclaim_space,
             config_file::profile_config_raw,
             config_file::save_profile_config_raw,
             config_file::validate_profile_config_raw,

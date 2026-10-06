@@ -24,6 +24,9 @@ import { isTauriRuntime } from "../lib/api";
 import type { ConfigIssue } from "../lib/types";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
+import { RecreateDialog } from "./RecreateDialog";
+import { ReclaimDialog } from "./ReclaimDialog";
+import { formatGiB, isDiskShrink, shrinkMessage } from "../lib/disk";
 import { K3sVersionPicker } from "../components/K3sVersionPicker";
 import {
   Banner,
@@ -171,6 +174,8 @@ interface MachineConfigDialogProps {
   /** Patches applied once via `setIn` right after the config loads, counted
    * as unsaved changes (§6.5, e.g. `kubernetes.enabled: true`). */
   initialPatch?: ConfigPatch[];
+  /** Navigate to the Volumes page (used by the Reclaim dialog's link). */
+  onOpenVolumes?: (profile: string) => void;
 }
 
 export function MachineConfigDialog({
@@ -181,6 +186,7 @@ export function MachineConfigDialog({
   onSaved,
   initialSection,
   initialPatch,
+  onOpenVolumes,
 }: MachineConfigDialogProps) {
   const toast = useToast();
   const isNew = profileName === null;
@@ -195,6 +201,8 @@ export function MachineConfigDialog({
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(0); // bumps to force re-render after in-place doc mutation
   const [issues, setIssues] = useState<ConfigIssue[]>([]);
+  const [recreateOpen, setRecreateOpen] = useState(false);
+  const [reclaimOpen, setReclaimOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const validationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const validationRequestId = useRef(0);
@@ -215,6 +223,14 @@ export function MachineConfigDialog({
     queryFn: () => api.profileConfigRaw("default"),
     enabled: open && isNew,
   });
+
+  // Real VM disk size (§6.4): a smaller `disk` than this can't be applied.
+  const diskInfoQuery = useQuery({
+    queryKey: ["profileDiskInfo", profileName],
+    queryFn: () => api.profileDiskInfo(profileName ?? "default"),
+    enabled: open && !isNew && !!profileName,
+  });
+  const currentDiskGiB = diskInfoQuery.data?.exists ? (diskInfoQuery.data.sizeGiB ?? null) : null;
 
   const k3sVersionsQuery = useQuery({
     queryKey: ["k3sVersions"],
@@ -404,8 +420,7 @@ export function MachineConfigDialog({
     !isNew && full && initialDoc && getIn(initialDoc, ["runtime"], "docker") !== full.runtime.runtime;
   const vmTypeChanged =
     !isNew && full && initialDoc && getIn(initialDoc, ["vmType"], "qemu") !== full.vm.vmType;
-  const diskShrunk =
-    !isNew && full && initialDoc && full.resources.disk < getIn(initialDoc, ["disk"], 100);
+  const diskShrunk = !isNew && !!full && isDiskShrink(full.resources.disk, currentDiskGiB);
 
   const nameError =
     isNew && newName.length > 0 && !PROFILE_NAME_PATTERN.test(newName)
@@ -430,6 +445,7 @@ export function MachineConfigDialog({
   const canSave =
     doc !== null &&
     !yamlError &&
+    !diskShrunk &&
     errorIssues.length === 0 &&
     (!isNew || (newName.trim().length > 0 && !nameError));
 
@@ -559,10 +575,14 @@ export function MachineConfigDialog({
                   recreating it — these settings only take effect for a brand-new machine.
                 </Banner>
               )}
-              {!isNew && diskShrunk && (
+              {diskShrunk && currentDiskGiB != null && (
                 <Banner tone="danger">
-                  Disk size can only be increased, never shrunk, once the machine has been created. This
-                  value will be ignored on save.
+                  <div className="flex flex-col items-start gap-2">
+                    <span>{shrinkMessage(currentDiskGiB)}</span>
+                    <Button variant="danger" size="sm" onClick={() => setRecreateOpen(true)} disabled={busy}>
+                      Recreate with smaller disk…
+                    </Button>
+                  </div>
                 </Banner>
               )}
 
@@ -595,11 +615,21 @@ export function MachineConfigDialog({
                   <FieldRow
                     label="Disk (GiB)"
                     yamlKey="disk"
-                    help="Container data disk size. Can only be increased after the machine is created."
-                    invalid={(diskShrunk && "Cannot shrink an existing disk") || issueForPath("disk")?.message}
+                    help={`Container data disk size. Can only be increased after the machine is created${currentDiskGiB != null ? ` (current size ${formatGiB(currentDiskGiB)})` : ""}.`}
+                    invalid={(diskShrunk && currentDiskGiB != null && shrinkMessage(currentDiskGiB)) || issueForPath("disk")?.message}
                   >
                     <NumberStepper value={full.resources.disk} min={1} onChange={(v) => mutate((d) => setIn(d, ["disk"], v))} />
                   </FieldRow>
+                  {!isNew && isRunning && (
+                    <div>
+                      <Button variant="secondary" size="sm" onClick={() => setReclaimOpen(true)} disabled={busy}>
+                        Reclaim disk space…
+                      </Button>
+                      <span className="ml-2 text-[11.5px]" style={{ color: "var(--text-faint)" }}>
+                        Prune unused Docker data and trim the VM disk.
+                      </span>
+                    </div>
+                  )}
                   <FieldRow
                     label="Root disk (GiB)"
                     yamlKey="rootDisk"
@@ -1186,6 +1216,36 @@ export function MachineConfigDialog({
           </Button>
         </div>
       </div>
+
+      {!isNew && doc && full && currentDiskGiB != null && (
+        <RecreateDialog
+          open={recreateOpen}
+          profile={targetProfile}
+          configContent={stringifyConfig(doc)}
+          currentGiB={currentDiskGiB}
+          newGiB={full.resources.disk}
+          onClose={() => setRecreateOpen(false)}
+          onDone={() => {
+            onSaved(targetProfile);
+            onClose();
+          }}
+        />
+      )}
+      {!isNew && (
+        <ReclaimDialog
+          open={reclaimOpen}
+          profile={targetProfile}
+          onClose={() => setReclaimOpen(false)}
+          onOpenVolumes={
+            onOpenVolumes
+              ? (p) => {
+                  onClose();
+                  onOpenVolumes(p);
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 }
