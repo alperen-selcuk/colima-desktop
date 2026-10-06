@@ -165,11 +165,9 @@ export function ComposeUpDialog({ open, profile, onClose, onStarted }: ComposeUp
             >
               <FileText size={13} style={{ color: "var(--docker-blue)", flexShrink: 0 }} />
               <span className="flex-1 truncate">{files[0]}</span>
-              <button onClick={() => setFiles([])} className="opacity-60 hover:opacity-100 flex-shrink-0">
-                <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
-                  Change
-                </span>
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => setFiles([])}>
+                Change
+              </Button>
             </div>
           ) : (
             <Button variant="secondary" size="sm" onClick={pickFile}>

@@ -1,6 +1,7 @@
 // Small, reusable form controls shared by the machine configuration editor
 // (§6.4). Kept separate from MachineConfigDialog.tsx to keep that file
 // focused on section layout and state wiring.
+import { Button } from "../components/Button";
 import { AlertTriangle, Minus, Plus, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ConfigIssue } from "../lib/types";
@@ -324,19 +325,14 @@ export function KeyValueEditor({
             placeholder={valuePlaceholder}
             onChange={(e) => updateRow(i, k, e.target.value)}
           />
-          <button type="button" onClick={() => removeRow(i)} aria-label="Remove">
-            <X size={13} style={{ color: "var(--text-faint)" }} />
-          </button>
+          <Button variant="ghost" size="sm" title="Remove" onClick={() => removeRow(i)}>
+            <X size={13} />
+          </Button>
         </div>
       ))}
-      <button
-        type="button"
-        onClick={() => onChange({ ...entries, "": "" })}
-        className="flex items-center gap-1 self-start text-[11.5px]"
-        style={{ color: "var(--accent)" }}
-      >
+      <Button variant="secondary" size="sm" className="self-start" onClick={() => onChange({ ...entries, "": "" })}>
         <Plus size={12} /> Add entry
-      </button>
+      </Button>
     </div>
   );
 }

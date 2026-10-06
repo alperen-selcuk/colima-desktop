@@ -299,9 +299,9 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
                 style={{ borderColor: "var(--border)", color: "var(--text)" }}
               >
                 <span className="flex-1">{m}</span>
-                <button onClick={() => setMounts((ms) => ms.filter((_, idx) => idx !== i))}>
-                  <X size={12} style={{ color: "var(--text-faint)" }} />
-                </button>
+                <Button variant="ghost" size="sm" title="Remove mount" onClick={() => setMounts((ms) => ms.filter((_, idx) => idx !== i))}>
+                  <X size={13} />
+                </Button>
               </div>
             ))}
           </div>

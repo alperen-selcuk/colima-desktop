@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Button } from "./Button";
 import { CheckCircle2, AlertCircle, Info, X } from "lucide-react";
 
 type ToastKind = "success" | "error" | "info";
@@ -111,14 +112,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   </button>
                 )}
               </div>
-              <button
-                onClick={() => dismiss(t.id)}
-                className="flex-shrink-0 opacity-60 hover:opacity-100"
-                style={{ color: "var(--text-dim)" }}
-                aria-label="Dismiss"
-              >
-                <X size={14} />
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => dismiss(t.id)} title="Dismiss"><X size={14} /></Button>
             </div>
           );
         })}

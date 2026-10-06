@@ -465,15 +465,15 @@ export function ContainersPage({ profile, status }: ContainersPageProps) {
                                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                   {running ? (
                                     <Button variant="ghost" size="sm" onClick={() => runAction(c, "stop")} title="Stop">
-                                      <Square size={11} />
+                                      <Square size={13} />
                                     </Button>
                                   ) : (
                                     <Button variant="ghost" size="sm" onClick={() => runAction(c, "start")} title="Start">
-                                      <Play size={11} />
+                                      <Play size={13} />
                                     </Button>
                                   )}
                                   <Button variant="ghost" size="sm" onClick={() => runAction(c, "restart")} title="Restart">
-                                    <RotateCw size={11} />
+                                    <RotateCw size={13} />
                                   </Button>
                                   <Button
                                     variant="ghost"
@@ -481,13 +481,13 @@ export function ContainersPage({ profile, status }: ContainersPageProps) {
                                     onClick={() => runAction(c, c.state === "paused" ? "unpause" : "pause")}
                                     title={c.state === "paused" ? "Unpause" : "Pause"}
                                   >
-                                    <Pause size={11} />
+                                    <Pause size={13} />
                                   </Button>
                                   <Button variant="ghost" size="sm" onClick={() => handleTerminal(c)} title="Terminal" disabled={!running}>
-                                    <TerminalSquare size={11} />
+                                    <TerminalSquare size={13} />
                                   </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(c)} title="Remove">
-                                    <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                                  <Button variant="danger-outline" size="sm" onClick={() => setConfirmRemove(c)} title="Remove">
+                                    <Trash2 size={13} />
                                   </Button>
                                 </div>
                               </Td>

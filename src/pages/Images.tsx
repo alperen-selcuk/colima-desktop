@@ -129,10 +129,10 @@ export function ImagesPage({ profile }: { profile: string }) {
                   <Td>
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="sm" onClick={() => setRunImage(`${img.repository}:${img.tag}`)} title="Run">
-                        <Play size={11} />
+                        <Play size={13} />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setConfirmRemove(img)} title="Delete">
-                        <Trash2 size={11} style={{ color: "var(--danger)" }} />
+                      <Button variant="danger-outline" size="sm" onClick={() => setConfirmRemove(img)} title="Delete">
+                        <Trash2 size={13} />
                       </Button>
                       {img.inUse && (
                         <span

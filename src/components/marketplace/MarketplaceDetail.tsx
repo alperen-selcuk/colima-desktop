@@ -47,9 +47,7 @@ export function MarketplaceDetail({ item, installed, onClose, onInstall }: Marke
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="flex-shrink-0 opacity-60 hover:opacity-100" style={{ color: "var(--text-dim)" }}>
-          <X size={15} />
-        </button>
+        <Button variant="ghost" size="sm" onClick={onClose} title="Close"><X size={14} /></Button>
       </div>
 
       <div className="flex border-b px-3" style={{ borderColor: "var(--border)" }}>

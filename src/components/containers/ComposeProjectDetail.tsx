@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "../Button";
 import { Layers, ScrollText, X } from "lucide-react";
 import type { Container } from "../../lib/types";
 import { LogViewer } from "../LogViewer";
@@ -69,9 +70,7 @@ export function ComposeProjectDetail({
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="opacity-60 hover:opacity-100 p-1 flex-shrink-0" style={{ color: "var(--text-dim)" }}>
-          <X size={15} />
-        </button>
+        <Button variant="ghost" size="sm" onClick={onClose} title="Close"><X size={14} /></Button>
       </div>
 
       <div className="flex border-b px-3" style={{ borderColor: "var(--border)" }}>

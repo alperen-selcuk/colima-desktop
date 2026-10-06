@@ -366,7 +366,7 @@ export function K8sCreateDialog({ open, profile, kind, currentNamespace, onClose
                     onChange={(e) => set({ env: f.env.map((r, j) => (j === idx ? { ...r, value: e.target.value } : r)) })}
                   />
                   <Button variant="ghost" size="sm" title="Remove" onClick={() => set({ env: f.env.filter((_, j) => j !== idx) })}>
-                    <X size={12} />
+                    <X size={13} />
                   </Button>
                 </div>
               ))}

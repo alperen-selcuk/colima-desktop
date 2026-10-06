@@ -31,35 +31,39 @@ export function TerminalSplitButton({ shell, profile, vmEnabled, onLocal, onVm, 
   return (
     <div className="relative flex" ref={ref}>
       <Button
-        variant="ghost"
+        variant="secondary"
         size={size}
         onClick={onLocal}
-        title={`Local shell (${shell})`}
-        className="rounded-r-none"
+        title={`Open local shell (${shell})`}
+        aria-label={label ? undefined : `Open local shell (${shell})`}
+        className="btn-join-l"
+        iconOnly={!label}
       >
         <TerminalSquare size={size === "sm" ? 11 : 12} /> {label}
       </Button>
       <Button
-        variant="ghost"
+        variant="secondary"
         size={size}
         onClick={() => setOpen((v) => !v)}
-        className="rounded-l-none px-1"
+        className="btn-join-r !px-0 !w-7"
+        style={{ marginLeft: -1 }}
+        title="Terminal options"
         aria-label="Terminal options"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <ChevronDown size={size === "sm" ? 11 : 12} />
       </Button>
       {open && (
         <div
-          className="absolute right-0 top-full z-30 mt-1 min-w-[230px] rounded-md border py-1 shadow-lg"
-          style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color-lg)" }}
+          className="menu absolute right-0 top-full z-30 mt-1 min-w-[230px]" role="menu"
         >
           <button
             onClick={() => {
               setOpen(false);
               onLocal();
             }}
-            className="block w-full px-3 py-1.5 text-left text-[12.5px] hover:bg-[var(--surface-2)]"
-            style={{ color: "var(--text)" }}
+            className="menu-item" role="menuitem"
           >
             Local shell ({shell})
           </button>
@@ -69,8 +73,7 @@ export function TerminalSplitButton({ shell, profile, vmEnabled, onLocal, onVm, 
               setOpen(false);
               onVm();
             }}
-            className="block w-full px-3 py-1.5 text-left text-[12.5px] hover:bg-[var(--surface-2)] disabled:opacity-40"
-            style={{ color: "var(--text)" }}
+            className="menu-item" role="menuitem"
           >
             Colima VM shell ({profile ?? "default"})
           </button>

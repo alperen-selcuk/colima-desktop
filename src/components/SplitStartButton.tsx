@@ -42,7 +42,7 @@ export function SplitStartButton({
         size={size}
         onClick={onQuickStart}
         disabled={disabled}
-        className="rounded-r-none"
+        className="btn-join-l"
       >
         <Play size={size === "sm" ? 11 : 12} /> {label}
       </Button>
@@ -51,24 +51,25 @@ export function SplitStartButton({
         size={size}
         onClick={() => setOpen((v) => !v)}
         disabled={disabled}
-        className="rounded-l-none border-l px-1.5"
-        style={{ borderLeft: "1px solid rgba(0,0,0,0.15)" }}
+        className="btn-join-r !px-0 !w-7"
+        style={{ borderLeft: "1px solid rgba(0,0,0,0.2)" }}
+        title="Start options"
         aria-label="Start options"
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
         <ChevronDown size={size === "sm" ? 11 : 12} />
       </Button>
       {open && (
         <div
-          className="absolute left-0 top-full z-30 mt-1 min-w-[220px] rounded-md border py-1 shadow-lg"
-          style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color-lg)" }}
+          className="menu absolute left-0 top-full z-30 mt-1 min-w-[220px]" role="menu"
         >
           <button
             onClick={() => {
               setOpen(false);
               onConfigure();
             }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-[var(--surface-2)]"
-            style={{ color: "var(--text)" }}
+            className="menu-item" role="menuitem"
           >
             Start with configuration…
           </button>
@@ -78,8 +79,7 @@ export function SplitStartButton({
                 setOpen(false);
                 onQuickStartOptions();
               }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-[var(--surface-2)]"
-              style={{ color: "var(--text)" }}
+              className="menu-item" role="menuitem"
             >
               Quick start options…
             </button>

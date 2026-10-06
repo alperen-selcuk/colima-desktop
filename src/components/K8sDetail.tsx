@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button } from "./Button";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, X } from "lucide-react";
 import * as api from "../lib/api";
@@ -79,9 +80,7 @@ export function K8sDetail({
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="flex-shrink-0 opacity-60 hover:opacity-100" style={{ color: "var(--text-dim)" }}>
-          <X size={15} />
-        </button>
+        <Button variant="ghost" size="sm" onClick={onClose} title="Close"><X size={14} /></Button>
       </div>
 
       <div className="flex items-center justify-between border-b px-3" style={{ borderColor: "var(--border)" }}>

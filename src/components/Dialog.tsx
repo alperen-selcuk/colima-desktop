@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { Button } from "./Button";
 import { X } from "lucide-react";
 
 interface DialogProps {
@@ -48,14 +49,7 @@ export function Dialog({ open, onClose, title, children, footer, width = 480, zI
           <h2 className="text-[13px] font-semibold" style={{ color: "var(--text)" }}>
             {title}
           </h2>
-          <button
-            onClick={onClose}
-            className="opacity-60 hover:opacity-100"
-            style={{ color: "var(--text-dim)" }}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+          <Button variant="ghost" size="sm" onClick={onClose} title="Close"><X size={14} /></Button>
         </div>
         <div className="px-4 py-4 overflow-y-auto">{children}</div>
         {footer && (

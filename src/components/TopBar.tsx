@@ -62,9 +62,10 @@ export function TopBar({
       <div className="relative">
         <button
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12.5px] font-medium"
-          style={{ borderColor: "var(--border-strong)", color: "var(--text)", background: "var(--surface-2)" }}
-        >
+          className="btn btn-secondary btn-sm gap-2 !px-2.5"
+          aria-haspopup="menu"
+          aria-expanded={open}
+                  >
           <StatusDot tone={statusTone(currentProfile?.status ?? "")} pulse={running} />
           {selected ?? "no profile"}
           <ChevronDown size={13} style={{ color: "var(--text-faint)" }} />
@@ -73,8 +74,7 @@ export function TopBar({
           <>
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
             <div
-              className="absolute left-0 top-full z-20 mt-1 min-w-[200px] rounded-md border py-1 shadow-lg"
-              style={{ background: "var(--surface-1)", borderColor: "var(--border)", boxShadow: "0 12px 32px var(--shadow-color-lg)" }}
+              className="menu absolute left-0 top-full z-20 mt-1" role="menu"
             >
               {profiles.map((p) => (
                 <button
@@ -83,8 +83,7 @@ export function TopBar({
                     onSelect(p.name);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-[var(--surface-2)]"
-                  style={{ color: "var(--text)" }}
+                  className="menu-item" role="menuitem"
                 >
                   <StatusDot tone={statusTone(p.status)} />
                   {p.name}
@@ -99,10 +98,10 @@ export function TopBar({
       </div>
 
       <div
-        className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+        className="pill"
         style={{
           background: busy ? "var(--warn-soft)" : running ? "var(--accent-soft)" : "var(--surface-3)",
-          color: busy ? "var(--warn)" : running ? "var(--accent)" : "var(--text-faint)",
+          color: busy ? "var(--warn)" : running ? "var(--accent-strong)" : "var(--text-dim)",
         }}
       >
         {pillLabel}
@@ -110,7 +109,7 @@ export function TopBar({
 
       {ops.length > 0 && (
         <div
-          className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+          className="pill"
           style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
           title="Operation in progress — see the Output tab for details"
         >
@@ -121,7 +120,7 @@ export function TopBar({
 
       {status?.kubernetes && (
         <div
-          className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+          className="pill"
           style={{ background: "var(--info-soft)", color: "var(--info)" }}
         >
           k8s on
@@ -130,14 +129,9 @@ export function TopBar({
 
       <div className="ml-auto flex items-center gap-2">
         {running ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
-              <Square size={12} /> Stop
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onConfigure} disabled={busy} title="Configure…">
-              <Settings size={12} /> Configure…
-            </Button>
-          </>
+          <Button variant="secondary" size="sm" onClick={onStop} disabled={busy}>
+            <Square size={12} /> Stop
+          </Button>
         ) : (
           <SplitStartButton
             onQuickStart={onStart}
@@ -146,8 +140,11 @@ export function TopBar({
             disabled={busy}
           />
         )}
-        <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
-          <RotateCw size={12} />
+        <Button variant="secondary" size="sm" onClick={onConfigure} disabled={busy} title="Configure machine">
+          <Settings size={12} /> Configure
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart machine">
+          <RotateCw size={13} />
         </Button>
         <TerminalSplitButton
           shell={shell}

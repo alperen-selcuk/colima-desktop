@@ -23,6 +23,16 @@ All notable changes to Colima Desktop are documented in this file.
 - `k8s_scale` now takes a `kind` (`deployment | statefulset`) and `k8s_restart_deployment` is replaced by `k8s_restart`
   (`deployment | statefulset | daemonset`). Deleting statefulsets and daemonsets requires typing the name, like deployments.
 
+### Changed
+
+- **Button system and UI polish**: one shared `Button` / `IconButton` (primary, secondary, ghost, danger, danger-outline; 28/32px
+  heights, loading state, focus ring, both themes). Icon-only buttons are bordered tiles with a tooltip and `aria-label`. Close,
+  remove, reveal/copy and log buttons now use it; dropdowns share one menu style.
+- **Machines cards**: no more clipped actions. Stop/Start and Configure are labelled, restart and the Terminal split sit in a
+  wrapping row, and Reclaim space and Delete moved into a "..." menu. Status pill, labelled CPU/Memory/Disk and aligned badges.
+- **Top bar**: consistent sizes, aligned status pills, Configure always available. Row actions in tables use visible bordered
+  icon buttons (red outline for delete).
+
 ## [0.2.4] - 2026-10-06
 
 ### Changed

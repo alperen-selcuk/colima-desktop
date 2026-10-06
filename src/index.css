@@ -212,6 +212,86 @@ tbody tr:nth-child(even) {
   }
 }
 
+
+/* ---------- Button system ----------
+ * Heights: sm 28px, md 32px. Radius 6px. Icon buttons are square tiles. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.btn-sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.btn-md { height: 32px; padding: 0 14px; font-size: 13px; }
+.btn-icon.btn-sm { width: 28px; padding: 0; }
+.btn-icon.btn-md { width: 32px; padding: 0; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+
+.btn-primary { background: var(--accent); color: var(--accent-contrast); box-shadow: 0 1px 0 var(--shadow-color); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
+
+.btn-secondary { background: var(--surface-1); color: var(--text); border-color: var(--border-strong); box-shadow: 0 1px 0 var(--shadow-color); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-3); }
+
+.btn-ghost { background: transparent; color: var(--text-dim); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
+/* Icon-only ghost: visible but subdued tile. */
+.btn-ghost.btn-icon { border-color: var(--border); background: var(--surface-1); }
+.btn-ghost.btn-icon:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-3); color: var(--text); }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { filter: brightness(1.1); }
+.btn-danger-outline { background: transparent; color: var(--danger); border-color: var(--danger); }
+.btn-danger-outline:hover:not(:disabled) { background: var(--danger-soft); }
+.btn-danger-outline.btn-icon { border-color: var(--border); }
+.btn-danger-outline.btn-icon:hover:not(:disabled) { border-color: var(--danger); }
+
+/* Split-button joins */
+.btn-join-l { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-join-r { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+/* Dropdown menu */
+.menu {
+  min-width: 200px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: 0 12px 32px var(--shadow-color-lg);
+}
+.menu-item {
+  display: flex; width: 100%; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 5px; text-align: left;
+  font-size: 12.5px; color: var(--text); cursor: pointer;
+}
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--surface-3); outline: none; }
+.menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.menu-item-danger { color: var(--danger); }
+.menu-item-danger:hover:not(:disabled) { background: var(--danger-soft); }
+.menu-sep { height: 1px; margin: 4px 0; background: var(--border); }
+
+/* Status pill */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px;
+  border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap;
+}
+.badge {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
+  border-radius: 4px; font-size: 11px; white-space: nowrap;
+  background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
