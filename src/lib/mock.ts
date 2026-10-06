@@ -32,6 +32,7 @@ import type {
   ProfileConfigRaw,
   ProfileStatus,
   RepairResult,
+  KubeconfigInfo,
   SecretValue,
   Volume,
 } from "./types";
@@ -770,6 +771,16 @@ export function mockHostKubeconfigHealth(profile: string): HostKubeconfigHealth 
 
 export function mockRepairHostKubeconfig(): RepairResult {
   return { backupPath: "~/.kube/config.colima-desktop-bak-1758912345" };
+}
+
+export function mockKubeconfigInfo(profile: string): KubeconfigInfo {
+  const context = profile === "default" ? "colima" : `colima-${profile}`;
+  return {
+    path: `/mock/app-data/kube/${profile}.yaml`,
+    context,
+    server: "https://127.0.0.1:6443",
+    content: `apiVersion: v1\nkind: Config\nclusters:\n- name: ${context}\n  cluster:\n    server: https://127.0.0.1:6443\n`,
+  };
 }
 
 // ---- §6.7: Docker Compose ----

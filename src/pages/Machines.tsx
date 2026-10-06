@@ -12,10 +12,12 @@ import { SplitStartButton } from "../components/SplitStartButton";
 import { useToast } from "../components/Toasts";
 import { useDock } from "../lib/useDock";
 import { DepsBanner } from "../components/DepsBanner";
+import type { ActiveOp } from "../lib/opPhase";
 
 interface MachinesPageProps {
   profiles: Profile[];
   busyProfiles: string[];
+  ops?: Record<string, ActiveOp>;
   selected: string | null;
   onSelect: (name: string) => void;
   onStartProfile: (name: string) => void;
@@ -29,6 +31,7 @@ interface MachinesPageProps {
 function MachineCard({
   profile,
   busy,
+  phase,
   selected,
   onSelect,
   onStart,
@@ -42,6 +45,8 @@ function MachineCard({
 }: {
   profile: Profile;
   busy: boolean;
+  /** Human phase of the running op ("Starting Docker"), when known. */
+  phase?: string;
   selected: boolean;
   onSelect: () => void;
   onStart: () => void;
@@ -83,7 +88,7 @@ function MachineCard({
             color: busy ? "var(--warn)" : running ? "var(--accent)" : "var(--text-faint)",
           }}
         >
-          {busy ? (running ? "Stopping…" : "Starting…") : profile.status}
+          {busy ? (phase ? `${phase}…` : running ? "Stopping…" : "Starting…") : profile.status}
         </span>
       </div>
 
@@ -164,6 +169,7 @@ function MachineCard({
 export function MachinesPage({
   profiles,
   busyProfiles,
+  ops = {},
   selected,
   onSelect,
   onStartProfile,
@@ -188,7 +194,6 @@ export function MachinesPage({
   const handleRestart = async (name: string) => {
     try {
       await api.restartProfile(name);
-      toast.success(`${name} restarting`);
     } catch (e) {
       toast.error(`Failed to restart ${name}`, String(e));
     }
@@ -238,6 +243,7 @@ export function MachinesPage({
             key={p.name}
             profile={p}
             busy={busyProfiles.includes(p.name)}
+            phase={ops[p.name]?.phase}
             selected={p.name === selected}
             onSelect={() => onSelect(p.name)}
             onStart={() => onStartProfile(p.name)}

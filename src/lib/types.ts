@@ -287,6 +287,22 @@ export interface OpLog {
   line: string;
 }
 
+/** `colima-op-end` event: a streamed operation finished (v0.2.3). */
+export interface OpEnd {
+  profile: string;
+  op: string;
+  ok: boolean;
+  error: string | null;
+}
+
+/** `k8s_kubeconfig`: the app-managed kubeconfig (v0.2.3). */
+export interface KubeconfigInfo {
+  path: string;
+  context: string;
+  server: string;
+  content: string;
+}
+
 /** `profile_disk_info`: the VM disk file's real size and what it occupies on the host (§6.4). */
 export interface DiskInfo {
   exists: boolean;

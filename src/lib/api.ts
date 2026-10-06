@@ -16,6 +16,8 @@ import type {
   Image,
   InstalledApp,
   K3sVersionsResponse,
+  KubeconfigInfo,
+  OpEnd,
   K8sConfigMap,
   K8sDeployment,
   K8sIngress,
@@ -221,6 +223,11 @@ async function mockInvoke<T>(
       return mock.mockNodeMetrics as unknown as T;
     case "host_kubeconfig_health":
       return mock.mockHostKubeconfigHealth(profile) as unknown as T;
+    case "k8s_kubeconfig":
+      return mock.mockKubeconfigInfo(profile) as unknown as T;
+    case "k8s_export_kubeconfig":
+      return (args?.path as string) as unknown as T;
+    case "k8s_merge_kubeconfig":
     case "repair_host_kubeconfig":
       return mock.mockRepairHostKubeconfig() as unknown as T;
     case "start_log_stream":
@@ -673,6 +680,21 @@ export function repairHostKubeconfig(profile: string): Promise<RepairResult> {
   return invoke<RepairResult>("repair_host_kubeconfig", { profile });
 }
 
+/** App-managed kubeconfig content + context + API server (refreshed first). */
+export function k8sKubeconfig(profile: string): Promise<KubeconfigInfo> {
+  return invoke<KubeconfigInfo>("k8s_kubeconfig", { profile });
+}
+
+/** Writes the app-managed kubeconfig to `path` (mode 0600). Returns the path written. */
+export function k8sExportKubeconfig(profile: string, path: string): Promise<string> {
+  return invoke<string>("k8s_export_kubeconfig", { profile, path });
+}
+
+/** Merges the colima user/cluster/context entries into the user's kubeconfig (backup first). */
+export function k8sMergeKubeconfig(profile: string): Promise<RepairResult> {
+  return invoke<RepairResult>("k8s_merge_kubeconfig", { profile });
+}
+
 export function startLogStream(profile: string, target: LogTarget): Promise<string> {
   return invoke<string>("start_log_stream", { profile, target });
 }
@@ -804,6 +826,10 @@ export function terminalClose(sessionId: string): Promise<void> {
 
 export function onOpLog(handler: (payload: OpLog) => void): Promise<UnlistenFn> {
   return listen<OpLog>("colima-op-log", handler);
+}
+
+export function onOpEnd(handler: (payload: OpEnd) => void): Promise<UnlistenFn> {
+  return listen<OpEnd>("colima-op-end", handler);
 }
 
 export function onLogLine(handler: (payload: LogEvent) => void): Promise<UnlistenFn> {

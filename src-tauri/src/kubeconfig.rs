@@ -621,8 +621,14 @@ async fn repair_at(user_path: &Path, app_path: &Path, ctx: &str) -> Result<Repai
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let backup_path = format!("{}.colima-desktop-bak-{ts}", user_path.display());
-    std::fs::copy(user_path, &backup_path).map_err(|e| format!("failed to back up kubeconfig: {e}"))?;
+    // The file may not exist yet (first-time merge): nothing to back up then.
+    let backup_path = if user_path.is_file() {
+        let bp = format!("{}.colima-desktop-bak-{ts}", user_path.display());
+        std::fs::copy(user_path, &bp).map_err(|e| format!("failed to back up kubeconfig: {e}"))?;
+        bp
+    } else {
+        String::new()
+    };
 
     let user_path_str = user_path.to_string_lossy().to_string();
     let sets: [(String, String); 4] = [
@@ -648,6 +654,29 @@ async fn repair_at(user_path: &Path, app_path: &Path, ctx: &str) -> Result<Repai
             .map_err(|e| format!("failed to update {path_key}: {e}"))?;
     }
 
+    // Add the context itself when it doesn't exist yet (merge case). An
+    // existing context is left alone; current-context is never touched.
+    let has_context = std::fs::read_to_string(user_path)
+        .ok()
+        .and_then(|c| serde_yaml::from_str::<serde_yaml::Value>(&c).ok())
+        .map(|d| find_named(&d, "contexts", ctx).is_some())
+        .unwrap_or(false);
+    if !has_context {
+        for (key, value) in [(format!("contexts.{ctx}.cluster"), ctx), (format!("contexts.{ctx}.user"), ctx)] {
+            let args = [
+                "config",
+                "set",
+                key.as_str(),
+                value,
+                "--kubeconfig",
+                user_path_str.as_str(),
+            ];
+            crate::exec::run("kubectl", &args)
+                .await
+                .map_err(|e| format!("failed to update {key}: {e}"))?;
+        }
+    }
+
     Ok(RepairResult { backup_path })
 }
 
@@ -663,6 +692,102 @@ pub async fn repair_host_kubeconfig(app: AppHandle, profile: String) -> Result<R
     let user_path = resolve_user_kubeconfig_path(kubeconfig_env.as_deref(), home_env.as_deref());
 
     repair_at(&user_path, &app_kube_path, &ctx).await
+}
+
+// ---------------------------------------------------------------------------
+// Kubernetes "Connect" panel (v0.2.3): read / export / merge the kubeconfig.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KubeconfigInfo {
+    pub path: String,
+    pub context: String,
+    pub server: String,
+    pub content: String,
+}
+
+/// API server URL of cluster `ctx` in a kubeconfig document ("" if absent).
+pub fn server_of(content: &str, ctx: &str) -> String {
+    serde_yaml::from_str::<serde_yaml::Value>(content)
+        .ok()
+        .and_then(|d| {
+            find_named(&d, "clusters", ctx)
+                .and_then(|c| c.get("cluster"))
+                .and_then(|c| c.get("server"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+/// Validate a user-chosen export destination: must be absolute, must not be
+/// the user's own kubeconfig (`user_cfg`) nor a directory.
+pub fn validate_export_path(path: &str, user_cfg: &Path) -> Result<PathBuf, String> {
+    let p = PathBuf::from(path.trim());
+    if path.trim().is_empty() || !p.is_absolute() {
+        return Err("choose an absolute file path".to_string());
+    }
+    if p.is_dir() {
+        return Err("that path is a directory".to_string());
+    }
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    };
+    // A not-yet-existing target can't be canonicalized; compare its parent too.
+    let parent_same = p
+        .parent()
+        .zip(user_cfg.parent())
+        .map(|(a, b)| same(a, b) && p.file_name() == user_cfg.file_name())
+        .unwrap_or(false);
+    if same(&p, user_cfg) || parent_same {
+        return Err("refusing to overwrite your own kubeconfig — use \"Merge into ~/.kube/config\" instead".to_string());
+    }
+    Ok(p)
+}
+
+fn user_kubeconfig_path() -> PathBuf {
+    let kubeconfig_env = std::env::var("KUBECONFIG").ok();
+    let home_env = std::env::var("HOME").ok();
+    resolve_user_kubeconfig_path(kubeconfig_env.as_deref(), home_env.as_deref())
+}
+
+/// App-managed kubeconfig for `profile` (refreshed first): path, context
+/// name, API server and the file content.
+#[tauri::command]
+pub async fn k8s_kubeconfig(app: AppHandle, profile: String) -> Result<KubeconfigInfo, String> {
+    crate::validate::validate_profile_name(&profile)?;
+    let ctx = kube_context(&profile);
+    let path = ensure_fresh(&app, &profile).await?;
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| not_reachable(format!("cannot read app-managed kubeconfig: {e}")))?;
+    Ok(KubeconfigInfo {
+        path: path.to_string_lossy().to_string(),
+        server: server_of(&content, &ctx),
+        context: ctx,
+        content,
+    })
+}
+
+/// Write the app-managed kubeconfig to `path` (mode 0600). Rejects the
+/// user's own kubeconfig as a destination. Returns the written path.
+#[tauri::command]
+pub async fn k8s_export_kubeconfig(app: AppHandle, profile: String, path: String) -> Result<String, String> {
+    crate::validate::validate_profile_name(&profile)?;
+    let target = validate_export_path(&path, &user_kubeconfig_path())?;
+    let src = ensure_fresh(&app, &profile).await?;
+    let content = std::fs::read_to_string(&src)
+        .map_err(|e| not_reachable(format!("cannot read app-managed kubeconfig: {e}")))?;
+    write_atomic_0600(&target, &content)?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+/// Merge the colima user/cluster/context entries into the user's kubeconfig
+/// (backup first when the file exists; never changes current-context).
+#[tauri::command]
+pub async fn k8s_merge_kubeconfig(app: AppHandle, profile: String) -> Result<RepairResult, String> {
+    repair_host_kubeconfig(app, profile).await
 }
 
 /// Minimal, dependency-free SHA-256 implementation (FIPS 180-4), used only
@@ -1003,6 +1128,32 @@ users:
     }
 
     // --- KubeconfigState -----------------------------------------------------
+
+    #[test]
+    fn server_of_reads_cluster_server() {
+        let y = "clusters:\n- name: colima\n  cluster:\n    server: https://127.0.0.1:6443\n";
+        assert_eq!(server_of(y, "colima"), "https://127.0.0.1:6443");
+        assert_eq!(server_of(y, "other"), "");
+        assert_eq!(server_of("not: [valid", "colima"), "");
+    }
+
+    #[test]
+    fn export_path_rejects_relative_empty_and_user_kubeconfig() {
+        let user = Path::new("/nonexistent-home/.kube/config");
+        assert!(validate_export_path("", user).is_err());
+        assert!(validate_export_path("kubeconfig.yaml", user).is_err());
+        let e = validate_export_path("/nonexistent-home/.kube/config", user).unwrap_err();
+        assert!(e.contains("refusing"));
+        assert_eq!(
+            validate_export_path("/tmp/colima-kubeconfig.yaml", user).unwrap(),
+            PathBuf::from("/tmp/colima-kubeconfig.yaml")
+        );
+    }
+
+    #[test]
+    fn export_path_rejects_directory() {
+        assert!(validate_export_path("/tmp", Path::new("/nonexistent/.kube/config")).is_err());
+    }
 
     #[test]
     fn kubeconfig_state_tracks_freshness_per_profile() {

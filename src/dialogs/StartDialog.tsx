@@ -142,7 +142,6 @@ export function StartDialog({ open, profileName, isNew, onClose, onStarted }: St
     setBusy(true);
     try {
       await api.startProfile(targetName, options);
-      toast.success(`${targetName} started`);
       onStarted(targetName);
       onClose();
     } catch (e) {

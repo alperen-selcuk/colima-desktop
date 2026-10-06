@@ -6,12 +6,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   Boxes,
   Code2,
   Cpu,
   FolderTree,
   KeyRound,
   ListTree,
+  Loader2,
   Network,
   Save,
   Ship,
@@ -24,6 +26,7 @@ import { isTauriRuntime } from "../lib/api";
 import type { ConfigIssue } from "../lib/types";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
+import type { ActiveOp } from "../lib/opPhase";
 import { useDeps } from "../lib/useDeps";
 import { RecreateDialog } from "./RecreateDialog";
 import { ReclaimDialog } from "./ReclaimDialog";
@@ -177,6 +180,10 @@ interface MachineConfigDialogProps {
   initialPatch?: ConfigPatch[];
   /** Navigate to the Volumes page (used by the Reclaim dialog's link). */
   onOpenVolumes?: (profile: string) => void;
+  /** "← Machines" home button: close the editor and go to the Machines page. */
+  onHome?: () => void;
+  /** Lifecycle op currently running for this profile (drives the footer progress text). */
+  activeOp?: ActiveOp;
 }
 
 export function MachineConfigDialog({
@@ -188,6 +195,8 @@ export function MachineConfigDialog({
   initialSection,
   initialPatch,
   onOpenVolumes,
+  onHome,
+  activeOp,
 }: MachineConfigDialogProps) {
   const toast = useToast();
   const isNew = profileName === null;
@@ -452,6 +461,52 @@ export function MachineConfigDialog({
     errorIssues.length === 0 &&
     (!isNew || (newName.trim().length > 0 && !nameError));
 
+  // Set while a Save & Start / Save & Restart chain is in flight, so the
+  // `colima-op-end` listener below knows the dialog is waiting for it.
+  const pendingStart = useRef<string | null>(null);
+  // The user closed the editor while the operation was still running: the
+  // operation keeps going in the backend, but we must not close a re-opened editor.
+  const closedWhileBusy = useRef(false);
+
+  const finishStart = (ok: boolean) => {
+    pendingStart.current = null;
+    setBusy(false);
+    if (ok && !closedWhileBusy.current) onClose();
+    closedWhileBusy.current = false;
+  };
+
+  // Backend op completion also resets "Working…" (belt and braces: the
+  // invoke promise normally resolves at the same moment).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    api.onOpEnd((end) => {
+      if (pendingStart.current !== end.profile) return;
+      if (end.op === "start" || end.op === "restart") finishStart(end.ok);
+    }).then((fn) => (disposed ? fn() : (unlisten = fn)));
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Closing is always possible; a running operation continues in the background. */
+  const requestClose = () => {
+    if (busy && pendingStart.current) {
+      closedWhileBusy.current = true;
+      toast.info(`Still starting ${pendingStart.current} in the background — see Output`);
+    }
+    onClose();
+  };
+  const requestHome = () => {
+    if (busy && pendingStart.current) {
+      closedWhileBusy.current = true;
+      toast.info(`Still starting ${pendingStart.current} in the background — see Output`);
+    }
+    (onHome ?? onClose)();
+  };
+
   const handleSave = async (thenStart: boolean) => {
     if (!doc || !canSave) return;
     setBusy(true);
@@ -459,19 +514,31 @@ export function MachineConfigDialog({
       const content = stringifyConfig(doc);
       await api.saveProfileConfigRaw(targetProfile, content);
       toast.success(`Saved configuration for ${targetProfile}`);
-      if (thenStart) {
-        if (isRunning) {
-          await api.stopProfile(targetProfile, false);
-        }
-        await api.startProfile(targetProfile, {});
-        toast.success(`${targetProfile} ${isRunning ? "restarted" : "started"}`);
-      }
-      onSaved(targetProfile);
-      onClose();
     } catch (e) {
       toast.error(`Failed to save configuration for ${targetProfile}`, String(e));
-    } finally {
       setBusy(false);
+      return;
+    }
+    if (!thenStart) {
+      setBusy(false);
+      onSaved(targetProfile);
+      onClose();
+      return;
+    }
+    // Start/restart: progress is shown in the footer and the Output dock; the
+    // dialog stays closable and resets `busy` on every exit path.
+    pendingStart.current = targetProfile;
+    closedWhileBusy.current = false;
+    onSaved(targetProfile);
+    try {
+      if (isRunning) {
+        await api.stopProfile(targetProfile, false);
+      }
+      await api.startProfile(targetProfile, {});
+      finishStart(true);
+    } catch (e) {
+      toast.error(`Failed to ${isRunning ? "restart" : "start"} ${targetProfile}`, String(e));
+      finishStart(false);
     }
   };
 
@@ -523,7 +590,7 @@ export function MachineConfigDialog({
             source: {source.source}
           </span>
         )}
-        <button onClick={onClose} className="ml-auto opacity-60 hover:opacity-100" aria-label="Close">
+        <button onClick={requestClose} className="ml-auto opacity-60 hover:opacity-100" aria-label="Close">
           <X size={18} style={{ color: "var(--text-dim)" }} />
         </button>
       </div>
@@ -568,6 +635,15 @@ export function MachineConfigDialog({
                 </button>
               );
             })}
+            <button
+              onClick={requestHome}
+              className="mt-auto flex items-center gap-2 rounded-md border px-2.5 py-2 text-left text-[12.5px] font-medium hover:bg-[var(--surface-2)]"
+              style={{ borderColor: "var(--border)", color: "var(--text)" }}
+              title="Back to the Machines page"
+            >
+              <ArrowLeft size={14} />
+              Machines
+            </button>
           </nav>
 
           <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -1229,9 +1305,15 @@ export function MachineConfigDialog({
             {warningIssues.length} warning{warningIssues.length === 1 ? "" : "s"}
           </span>
         )}
+        {busy && (
+          <span className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--accent)" }}>
+            <Loader2 size={12} className="spin" />
+            {activeOp ? `${activeOp.phase}…` : "Working…"}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Cancel
+          <Button variant="ghost" onClick={requestClose}>
+            {busy ? "Close" : "Cancel"}
           </Button>
           <Button variant="secondary" onClick={handleResetToTemplate} disabled={busy || !source}>
             Reset to template
