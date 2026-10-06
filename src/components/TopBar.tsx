@@ -1,9 +1,10 @@
-import { Loader2, ChevronDown, RotateCw, Settings, Square, TerminalSquare } from "lucide-react";
+import { Loader2, ChevronDown, RotateCw, Settings, Square } from "lucide-react";
 import { useState } from "react";
 import type { Profile, ProfileStatus } from "../lib/types";
 import { StatusDot, statusTone } from "./StatusDot";
 import { Button } from "./Button";
 import { SplitStartButton } from "./SplitStartButton";
+import { TerminalSplitButton } from "./TerminalSplitButton";
 import { opLabel, type ActiveOp } from "../lib/opPhase";
 
 interface TopBarProps {
@@ -20,7 +21,11 @@ interface TopBarProps {
   onQuickStartOptions: () => void;
   onStop: () => void;
   onRestart: () => void;
+  /** Opens the local host shell tab. */
   onTerminal: () => void;
+  /** Opens the Colima VM (`colima ssh`) shell tab. */
+  onTerminalVm: () => void;
+  shell: string;
 }
 
 export function TopBar({
@@ -37,6 +42,8 @@ export function TopBar({
   onStop,
   onRestart,
   onTerminal,
+  onTerminalVm,
+  shell,
 }: TopBarProps) {
   const [open, setOpen] = useState(false);
   const running = currentProfile?.status === "Running";
@@ -142,9 +149,15 @@ export function TopBar({
         <Button variant="ghost" size="sm" onClick={onRestart} disabled={busy || !running} title="Restart">
           <RotateCw size={12} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={onTerminal} disabled={!running} title="Open terminal (VM ssh)">
-          <TerminalSquare size={12} /> Terminal
-        </Button>
+        <TerminalSplitButton
+          shell={shell}
+          profile={selected}
+          vmEnabled={running}
+          onLocal={onTerminal}
+          onVm={onTerminalVm}
+          size="sm"
+          label="Terminal"
+        />
       </div>
     </div>
   );

@@ -2,6 +2,19 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.4] - 2026-10-06
+
+### Changed
+
+- **Terminal now opens your own shell.** The top-bar Terminal button (and the Machines card terminal button, and the
+  status-bar Terminal toggle on an empty dock) opens a local host shell tab instead of `colima ssh`. It is a split
+  button: main click = "Local shell (zsh)" (the actual `$SHELL`), caret menu = "Colima VM shell (<profile>)"; VM tabs
+  are titled `vm: <profile>`.
+- Host shells run as interactive login shells (`-il` for zsh/bash, `-l` otherwise) in `$HOME` with the full login-shell
+  environment captured once at startup (`$SHELL -ilc 'env -0'`, 3s timeout), so PATH, plugins (krew `kubectl ns`, ...)
+  and your own `KUBECONFIG`/`DOCKER_HOST` behave exactly like in macOS Terminal. VM/container/pod terminals still
+  strip `KUBECONFIG`/`DOCKER_HOST`/`DOCKER_CONTEXT`. `env_info` gains `shell`.
+
 ## [0.2.3] - 2026-10-06
 
 ### Added
