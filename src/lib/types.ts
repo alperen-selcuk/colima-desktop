@@ -561,3 +561,19 @@ export interface InstalledApp {
   endpoints: MarketplaceEndpoint[];
   notes: string | null;
 }
+
+/** `deps_check` (§6.9): one tool the app depends on. */
+export interface DepFix {
+  label: string;
+  command: string[];
+}
+
+export interface Dep {
+  name: string; // "colima" | "docker" | "docker-compose" | "kubectl" | "qemu"
+  required: boolean;
+  installed: boolean;
+  linked: boolean | null; // false = installed by Homebrew but not on PATH
+  version: string | null;
+  purpose: string;
+  fix: DepFix | null;
+}

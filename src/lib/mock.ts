@@ -5,6 +5,7 @@ import type {
   CatalogItem,
   CatalogResponse,
   ComposeInfo,
+  Dep,
   ComposePreview,
   ComposeProject,
   ConfigIssue,
@@ -52,6 +53,14 @@ export const mockEnvInfo: EnvInfo = {
   limactlAvailable: true,
   path: "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
 };
+
+export const mockDeps: Dep[] = [
+  { name: "colima", required: true, installed: true, linked: true, version: "colima version 0.8.1", purpose: "The container runtime manager this app drives.", fix: null },
+  { name: "docker", required: true, installed: true, linked: true, version: "Docker version 27.3.1", purpose: "Docker CLI, used for containers, images and volumes.", fix: null },
+  { name: "docker-compose", required: true, installed: true, linked: true, version: "2.29.7", purpose: "Needed for Compose projects and the Marketplace.", fix: null },
+  { name: "kubectl", required: true, installed: true, linked: true, version: "Client Version: v1.31.1", purpose: "Needed for Kubernetes.", fix: null },
+  { name: "qemu", required: false, installed: false, linked: null, version: null, purpose: "Optional: only needed for VM type qemu, or x86_64 emulation without Rosetta.", fix: { label: "Install qemu", command: ["brew", "install", "qemu"] } },
+];
 
 export const mockProfiles: Profile[] = [
   {

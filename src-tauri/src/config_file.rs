@@ -48,6 +48,27 @@ fn template_path_at(home: &std::path::Path) -> PathBuf {
     home.join("_templates").join("default.yaml")
 }
 
+/// New-machine defaults for template/builtin seeds (comment-preserving line
+/// edits of the top-level keys): `arch: host`, and `vmType: vz` on macOS
+/// (upstream's template says `qemu`, which needs a separate QEMU install).
+fn new_machine_defaults(content: &str, macos: bool) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for line in content.lines() {
+        if line.starts_with("arch:") {
+            out.push("arch: host".to_string());
+        } else if macos && line.starts_with("vmType:") {
+            out.push("vmType: vz".to_string());
+        } else {
+            out.push(line.to_string());
+        }
+    }
+    let mut s = out.join("\n");
+    if content.ends_with('\n') {
+        s.push('\n');
+    }
+    s
+}
+
 /// `profile_config_raw`: return the raw YAML text to seed the configuration
 /// editor with, per the precedence in §6.4: the profile's own file, else the
 /// user template, else the embedded upstream default. `path` is always the
@@ -69,7 +90,7 @@ fn profile_config_raw_at(home: &std::path::Path, profile: &str) -> Result<Profil
     if let Ok(content) = std::fs::read_to_string(template_path_at(home)) {
         if !content.trim().is_empty() {
             return Ok(ProfileConfigRaw {
-                content,
+                content: new_machine_defaults(&content, cfg!(target_os = "macos")),
                 source: ConfigSource::Template,
                 path: path.display().to_string(),
                 exists: false,
@@ -78,7 +99,7 @@ fn profile_config_raw_at(home: &std::path::Path, profile: &str) -> Result<Profil
     }
 
     Ok(ProfileConfigRaw {
-        content: BUILTIN_DEFAULT_YAML.to_string(),
+        content: new_machine_defaults(BUILTIN_DEFAULT_YAML, cfg!(target_os = "macos")),
         source: ConfigSource::Builtin,
         path: path.display().to_string(),
         exists: false,
@@ -691,6 +712,15 @@ mod tests {
         assert_eq!(result.source, ConfigSource::Template);
         assert!(!result.exists);
         assert!(result.content.contains("cpu: 5"));
+    }
+
+    #[test]
+    fn new_machine_defaults_set_vz_and_host() {
+        let src = "# c\narch: aarch64\nvmType: qemu # x\nmountType: sshfs\n  vmType: keep\n";
+        let m = new_machine_defaults(src, true);
+        assert_eq!(m, "# c\narch: host\nvmType: vz\nmountType: sshfs\n  vmType: keep\n");
+        let l = new_machine_defaults(src, false);
+        assert!(l.contains("vmType: qemu # x") && l.contains("arch: host"));
     }
 
     #[test]

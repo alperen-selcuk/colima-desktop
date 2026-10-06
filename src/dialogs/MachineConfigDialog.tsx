@@ -24,6 +24,7 @@ import { isTauriRuntime } from "../lib/api";
 import type { ConfigIssue } from "../lib/types";
 import { Button } from "../components/Button";
 import { useToast } from "../components/Toasts";
+import { useDeps } from "../lib/useDeps";
 import { RecreateDialog } from "./RecreateDialog";
 import { ReclaimDialog } from "./ReclaimDialog";
 import { formatGiB, isDiskShrink, shrinkMessage } from "../lib/disk";
@@ -211,6 +212,8 @@ export function MachineConfigDialog({
 
   const envQuery = useQuery({ queryKey: ["envInfo"], queryFn: api.envInfo, enabled: open });
   const isLinux = envQuery.data?.platform === "linux";
+  const depsState = useDeps();
+  const qemuMissing = depsState.deps?.find((d) => d.name === "qemu")?.installed === false;
 
   const rawQuery = useQuery({
     queryKey: ["profileConfigRaw", isNew ? null : profileName],
@@ -815,6 +818,31 @@ export function MachineConfigDialog({
                       onChange={(v) => mutate((d) => setIn(d, ["vmType"], v))}
                     />
                   </FieldRow>
+                  {full.vm.vmType === "qemu" && qemuMissing && (
+                    <Banner tone="warn">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>
+                          QEMU isn't installed, so this machine won't start.
+                          {!isLinux && " Choose VM type vz (recommended on macOS) or install QEMU."}
+                        </span>
+                        {!isLinux && (
+                          <div className="flex shrink-0 gap-2">
+                            <Button size="sm" variant="secondary" onClick={() => mutate((d) => setIn(d, ["vmType"], "vz"))}>
+                              Use vz
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              disabled={!!depsState.fixing}
+                              onClick={() => depsState.fix(["qemu"])}
+                            >
+                              {depsState.fixing ? "Installing…" : "Install QEMU"}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </Banner>
+                  )}
                   {full.vm.vmType === "vz" && (
                     <FieldRow label="Rosetta" yamlKey="rosetta" help="Utilise Rosetta for amd64 emulation (requires Apple Silicon + vz).">
                       <Switch checked={full.vm.rosetta} onChange={(v) => mutate((d) => setIn(d, ["rosetta"], v))} />

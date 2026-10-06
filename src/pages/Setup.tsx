@@ -1,5 +1,7 @@
 import { CheckCircle2, XCircle, TerminalSquare } from "lucide-react";
 import type { EnvInfo } from "../lib/types";
+import { Button } from "../components/Button";
+import { isHealthy, useDeps } from "../lib/useDeps";
 
 interface SetupPageProps {
   envInfo: EnvInfo | undefined;
@@ -21,6 +23,8 @@ function CheckRow({ label, ok }: { label: string; ok: boolean }) {
 
 export function SetupPage({ envInfo, standalone = false }: SetupPageProps) {
   const isLinux = envInfo?.platform === "linux";
+  const { deps, fixing, error, fix } = useDeps();
+  const fixable = (deps ?? []).filter((d) => d.fix && (d.required || !d.installed)).map((d) => d.name);
 
   const body = (
     <div className="mx-auto max-w-[560px] px-6 py-10">
@@ -50,6 +54,51 @@ export function SetupPage({ envInfo, standalone = false }: SetupPageProps) {
         </p>
       )}
 
+      {deps && (
+        <div
+          className="mb-4 rounded-lg border p-4"
+          style={{ background: "var(--surface-1)", borderColor: "var(--border)" }}
+        >
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[11px] font-medium" style={{ color: "var(--text-faint)" }}>
+              Dependencies
+            </span>
+            {fixable.length > 1 && (
+              <Button size="sm" variant="secondary" disabled={!!fixing} onClick={() => fix(fixable)}>
+                Fix all
+              </Button>
+            )}
+          </div>
+          {deps.map((d) => (
+            <div key={d.name} className="flex items-start justify-between gap-3 py-1.5">
+              <div className="min-w-0">
+                <CheckRow
+                  ok={isHealthy(d)}
+                  label={`${d.name}${d.required ? "" : " (optional)"} — ${
+                    d.installed ? (d.linked === false ? "installed but not linked" : d.version ?? "found") : "not found"
+                  }`}
+                />
+                {!isHealthy(d) && (
+                  <div className="pl-[23px] text-[11.5px]" style={{ color: "var(--text-faint)" }}>
+                    {d.purpose}
+                  </div>
+                )}
+              </div>
+              {d.fix && !isHealthy(d) && (
+                <Button size="sm" variant="primary" disabled={!!fixing} onClick={() => fix([d.name])}>
+                  {fixing === d.name ? "Working…" : d.fix.label}
+                </Button>
+              )}
+            </div>
+          ))}
+          {error && (
+            <div className="mt-2 text-[12px]" style={{ color: "var(--danger)" }}>
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+
       {envInfo && (
         <div
           className="mb-6 rounded-lg border p-4"
@@ -60,9 +109,6 @@ export function SetupPage({ envInfo, standalone = false }: SetupPageProps) {
               Dependencies
             </div>
           )}
-          <CheckRow label={envInfo.colimaVersion ? `colima — ${envInfo.colimaVersion}` : "colima — not found"} ok={!!envInfo.colimaVersion} />
-          <CheckRow label={envInfo.dockerAvailable ? "docker CLI — found" : "docker CLI — not found"} ok={envInfo.dockerAvailable} />
-          <CheckRow label={envInfo.kubectlAvailable ? "kubectl — found" : "kubectl — not found"} ok={envInfo.kubectlAvailable} />
           <CheckRow label={envInfo.limactlAvailable ? "limactl — found" : "limactl — not found"} ok={envInfo.limactlAvailable} />
         </div>
       )}

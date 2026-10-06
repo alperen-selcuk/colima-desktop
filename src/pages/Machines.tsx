@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SplitStartButton } from "../components/SplitStartButton";
 import { useToast } from "../components/Toasts";
 import { useDock } from "../lib/useDock";
+import { DepsBanner } from "../components/DepsBanner";
 
 interface MachinesPageProps {
   profiles: Profile[];
@@ -22,6 +23,7 @@ interface MachinesPageProps {
   onQuickStartOptions: (name: string) => void;
   onNewMachine: () => void;
   onOpenVolumes: (name: string) => void;
+  onOpenSetup: () => void;
 }
 
 function MachineCard({
@@ -169,6 +171,7 @@ export function MachinesPage({
   onQuickStartOptions,
   onNewMachine,
   onOpenVolumes,
+  onOpenSetup,
 }: MachinesPageProps) {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -226,6 +229,8 @@ export function MachinesPage({
           <Plus size={13} /> New machine
         </Button>
       </div>
+
+      <DepsBanner onOpenSetup={onOpenSetup} />
 
       <div className="grid grid-cols-1 gap-3 px-5 pb-5 sm:grid-cols-2 xl:grid-cols-3">
         {profiles.map((p) => (

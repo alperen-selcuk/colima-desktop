@@ -189,6 +189,7 @@ function AppShell() {
             onQuickStartOptions={(name) => setStartDialogProfile(name)}
             onNewMachine={() => setConfigDialog({ profile: null })}
             onOpenVolumes={openVolumes}
+            onOpenSetup={() => setPage("setup")}
           />
         );
       case "containers":

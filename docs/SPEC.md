@@ -200,6 +200,8 @@ export interface OpLog { profile: string; op: string; line: string; }
 | Command | Args | Returns | Implementation |
 |---|---|---|---|
 | `env_info` | – | `EnvInfo` | `colima version`, `which`-style lookup in resolved PATH |
+| `deps_check` | – | `Dep[]` | §6.9: detect colima/docker/docker-compose/kubectl/qemu (PATH + Homebrew), with allowlisted fix commands |
+| `deps_fix` | `name` | `Dep[]` | Runs the fix produced by `deps_check` for `name` (`brew install/link <formula>`), streamed as op `"deps"` (profile `""`), then re-checks |
 | `list_profiles` | – | `Profile[]` | `colima list --json`; empty stdout → `[]` |
 | `profile_status` | `profile` | `ProfileStatus \| null` | `colima status --json -p p`; non-zero exit → `null` |
 | `profile_config` | `profile` | `ProfileConfig \| null` | read yaml; `COLIMA_HOME` env or `~/.colima`; file `<home>/<profile>/colima.yaml`; missing → `null` |
@@ -563,6 +565,18 @@ Logo: `public/logo.svg` (transparent background, brand green, works on dark & li
 
 Toasts for errors/success (simple self-made toast stack). Confirm dialogs for destructive ops. Keyboard: `Cmd/Ctrl+K` focuses search on list pages.
 Do not use `window.confirm`/`alert` (not reliable in webviews) — use in-app dialogs.
+
+### 6.9 v0.2.2: Dependencies
+
+`Dep { name, required, installed, linked: boolean | null, version, purpose, fix: { label, command[] } | null }` for colima, docker,
+docker-compose, kubectl (required) and qemu (optional: only for `vmType: qemu` / x86_64 emulation without Rosetta). Detection: binary on the
+resolved PATH (`docker-compose` also counts as the `docker compose` plugin; qemu is detected by `qemu-img`). On macOS with Homebrew, a formula
+that `brew list --formula` reports but whose binary is not on PATH is `installed: true, linked: false` with fix `brew link <formula>`; a missing one
+gets `brew install <formula>` (kubectl uses `kubernetes-cli`). No Homebrew or Linux: `fix: null` and `purpose` carries the hint. `deps_fix` only runs
+commands built by `deps_check` (the `name` is a lookup key, never a command). UI: Setup page lists all deps with Fix buttons; the Machines page shows a
+banner for required deps that are missing/unlinked ("Fix all" runs fixes sequentially); the config editor warns when `vmType` is `qemu` and QEMU is absent
+(Install QEMU / Use vz). New machines seeded from the builtin or user template get `vmType: vz` (macOS only) and `arch: host` in `profile_config_raw`
+(line edits, comments preserved). `colima start` failing with "qemu-img not found" is mapped to a friendly message.
 
 ## 7. Build & run
 
