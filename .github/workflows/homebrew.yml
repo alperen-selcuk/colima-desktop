@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Check for HOMEBREW_TAP_TOKEN secret
         id: check-token
@@ -129,7 +129,7 @@ jobs:
 
       - name: Checkout homebrew-tap
         if: steps.check-token.outputs.skip == 'false'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.TAP_REPO }}
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
