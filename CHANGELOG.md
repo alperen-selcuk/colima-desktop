@@ -2,6 +2,16 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [0.2.6] - 2026-11-08
+
+### Security
+
+- Bumped `rustls` to 0.23.46 (bundled in the app's HTTPS client), fixing four advisories including TLS secrets exposed via
+  `Debug` formatting and unbounded certificate decompression.
+- Bumped dev/build tooling with published advisories: `vite` 7.3.7, `vitest` / `@vitest/mocker` 4.1.12, `source-map-js` 1.2.2.
+  `npm audit` now reports 0 vulnerabilities.
+- Added `SECURITY.md` (private vulnerability reporting) and Dependabot version updates for npm, cargo and GitHub Actions.
+
 ## [0.2.5] - 2026-10-06
 
 ### Added
