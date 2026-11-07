@@ -1,9 +1,17 @@
 version: 2
+# Security updates are always raised. Version updates skip semver-major bumps
+# (they need manual migration) and Tauri minor bumps, because the npm packages
+# and Rust crates must move together on the same major.minor.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-minor"]
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -12,6 +20,11 @@ updates:
     directory: /src-tauri
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tauri*"
+        update-types: ["version-update:semver-minor"]
     groups:
       cargo-minor-patch:
         update-types: [minor, patch]
