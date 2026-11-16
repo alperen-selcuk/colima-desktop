@@ -2,9 +2,10 @@ import { TerminalSplitButton } from "../components/TerminalSplitButton";
 import { useShellName } from "../lib/useShellName";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, Database, Eraser, HardDrive, MoreHorizontal, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
+import { Cpu, Database, Eraser, HardDrive, MoreHorizontal, Moon, Plus, RotateCw, Settings, Square, Trash2 } from "lucide-react";
 import * as api from "../lib/api";
-import type { Profile } from "../lib/types";
+import type { AutoStopStatus, Profile } from "../lib/types";
+import { AUTOSTOP_MINUTES, autostopHint } from "../lib/autostop";
 import { formatBytes } from "../lib/format";
 import { StatusDot, statusTone } from "../components/StatusDot";
 import { Button } from "../components/Button";
@@ -46,8 +47,15 @@ function MachineCard({
   onTerminalVm,
   shell,
   onReclaim,
+  autostopMinutes,
+  autostopStatus,
+  onAutostopChange,
 }: {
   profile: Profile;
+  /** Idle auto-stop limit in minutes, undefined when off (§6.11). */
+  autostopMinutes?: number;
+  autostopStatus?: AutoStopStatus;
+  onAutostopChange: (minutes: number | null) => void;
   busy: boolean;
   /** Human phase of the running op ("Starting Docker"), when known. */
   phase?: string;
@@ -147,6 +155,35 @@ function MachineCard({
         {profile.address && (
           <span className="font-mono-app text-[11px]" style={{ color: "var(--text-faint)" }}>
             {profile.address}
+          </span>
+        )}
+      </div>
+
+      <div
+        className="flex min-w-0 items-center gap-2 text-[11.5px]"
+        style={{ color: "var(--text-dim)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Moon size={12} />
+        <label htmlFor={`autostop-${profile.name}`}>Stop when idle</label>
+        <select
+          id={`autostop-${profile.name}`}
+          value={autostopMinutes ?? ""}
+          onChange={(e) => onAutostopChange(e.target.value === "" ? null : Number(e.target.value))}
+          className="rounded border px-1.5 py-0.5 text-[11.5px] outline-none"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          title="Stop this machine after it has been idle, so its memory goes back to the system"
+        >
+          <option value="">Off</option>
+          {AUTOSTOP_MINUTES.map((m) => (
+            <option key={m} value={m}>
+              after {m} min
+            </option>
+          ))}
+        </select>
+        {autostopMinutes !== undefined && (
+          <span className="truncate" style={{ color: "var(--text-faint)" }}>
+            {autostopHint(autostopStatus, running)}
           </span>
         )}
       </div>
@@ -252,6 +289,23 @@ export function MachinesPage({
     queryClient.invalidateQueries({ queryKey: ["busyProfiles"] });
   };
 
+  const autostopQuery = useQuery({ queryKey: ["autostopSettings"], queryFn: api.autostopSettings });
+  const autostopStatusQuery = useQuery({
+    queryKey: ["autostopStatus"],
+    queryFn: api.autostopStatus,
+    refetchInterval: 15000,
+    enabled: Object.keys(autostopQuery.data?.profiles ?? {}).length > 0,
+  });
+  const handleAutostopChange = async (name: string, minutes: number | null) => {
+    try {
+      const next = await api.setAutostop(name, minutes);
+      queryClient.setQueryData(["autostopSettings"], next);
+      queryClient.invalidateQueries({ queryKey: ["autostopStatus"] });
+    } catch (e) {
+      toast.error(`Failed to update auto-stop for ${name}`, String(e));
+    }
+  };
+
   const handleRestart = async (name: string) => {
     try {
       await api.restartProfile(name);
@@ -321,6 +375,9 @@ export function MachinesPage({
             onTerminalVm={() => handleTerminalVm(p.name)}
             shell={shell}
             onReclaim={() => setReclaimProfile(p.name)}
+            autostopMinutes={autostopQuery.data?.profiles[p.name]}
+            autostopStatus={autostopStatusQuery.data?.find((s) => s.profile === p.name)}
+            onAutostopChange={(m) => handleAutostopChange(p.name, m)}
           />
         ))}
         {profiles.length === 0 && (

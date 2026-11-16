@@ -4,8 +4,12 @@ All notable changes to Colima Desktop are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-11-16
+
 ### Added
 
+- Idle auto-stop: a per-machine "Stop when idle" setting (5/15/30/60 min) stops a running machine once it has no running containers, no
+  Docker activity, no open terminal/log/port-forward, Kubernetes off and a quiet VM, so its memory goes back to the system.
 - `bench/colima-bench.sh`: reproducible Colima benchmark (cold start, `docker run` latency, idle cost, memory return
   after load, bind-mount read, stop) on a dedicated profile; results summarised in the README.
 

@@ -263,6 +263,11 @@ pub fn kill_profile(app: &AppHandle, state: &AppState, profile: &str) {
     }
 }
 
+/// Number of running forwards of `profile` (idle auto-stop, §6.11).
+pub fn count_profile(state: &AppState, profile: &str) -> usize {
+    state.port_forwards.lock().unwrap().values().filter(|e| e.info.profile == profile).count()
+}
+
 /// Kill every forward (app exit).
 pub fn kill_all(state: &AppState) {
     let mut map = state.port_forwards.lock().unwrap();

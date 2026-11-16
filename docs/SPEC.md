@@ -654,6 +654,30 @@ TCP service ports; or "Other..."), optional local port (blank = auto). Success s
 "Port-forwards" button with a count badge that toggles a strip listing this profile's forwards (`127.0.0.1:<local> -> <remote>`) with Open, Copy URL and Stop;
 `port-forward-ended` events refresh the list and an `error` raises a toast.
 
+### 6.11 Idle auto-stop
+
+colima/Lima never return guest memory to the host while the VM runs (README benchmark: 4 GB stays allocated until `colima stop`), so the app can
+stop an idle machine for the user. Opt-in per profile; settings persist in `<app_data_dir>/autostop.json` as `{"profiles": {"<name>": <minutes>}}`.
+Allowed limits: 5, 15, 30, 60 minutes (anything else in the file is dropped on load).
+
+**Types.** `AutoStopSettings {profiles: Record<string, number>}`; `AutoStopStatus {profile, minutes, idleSeconds, busyReason: string | null}`;
+event payload `AutoStopped {profile, minutes}`.
+
+**Commands.** `autostop_settings() -> AutoStopSettings`; `set_autostop(profile, minutes: number | null) -> AutoStopSettings` (null disables; validates
+the profile name and the limit, resets the idle timer); `autostop_status() -> AutoStopStatus[]` (last sample of every configured profile).
+Event `auto-stopped` after a successful automatic stop.
+
+**Background task** (`autostop.rs`, started in app setup, runs while the window is hidden): every 30 s, for each configured profile, the machine is
+idle only when all of these hold — not running → `busyReason "stopped"`; a lifecycle op in flight → `"operation in progress"`:
+Kubernetes off (`"kubernetes"`), `docker ps -q` empty (`"containers"`), no `docker events` in the last 31 s (`"docker activity"`), no app terminal,
+log stream or port-forward of the profile (`"open sessions"`), guest 1-minute load average from `/proc/loadavg` (via `colima ssh`) ≤ 0.30
+(`"cpu load"`; a failed probe is `"unknown load"`). A busy sample resets the timer. When the profile has been idle for its limit, the task stops it
+through the regular `stop_profile` path (busy lock, streamed `colima-op-log`, `profiles-changed`) and emits `auto-stopped`.
+There is no automatic wake-up: the user starts the machine again (Machines page or tray).
+
+**UI.** Each machine card has a "Stop when idle" select (Off / after 5 / 15 / 30 / 60 min). When enabled on a running machine it shows
+"Idle N min · stops at M min" or "Not idle: <reason>" (`autostop_status`, polled every 15 s). `auto-stopped` raises a success toast.
+
 ## 7. Build & run
 
 - `npm install`, `npm run tauri dev`, `npm run tauri build`.

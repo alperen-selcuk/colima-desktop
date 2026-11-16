@@ -3,6 +3,7 @@
 //! images, volumes, and Kubernetes workloads. See `docs/SPEC.md` at the
 //! project root for the full contract this crate implements.
 
+mod autostop;
 mod colima;
 mod compose;
 mod config_file;
@@ -49,6 +50,9 @@ pub fn run() {
             colima::delete_profile,
             colima::kubernetes_action,
             colima::busy_profiles,
+            autostop::autostop_settings,
+            autostop::set_autostop,
+            autostop::autostop_status,
             disk::profile_disk_info,
             disk::recreate_profile,
             disk::reclaim_space,
@@ -119,6 +123,7 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::setup(app.handle())?;
+            autostop::spawn(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {

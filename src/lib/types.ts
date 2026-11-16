@@ -660,3 +660,24 @@ export interface Dep {
   purpose: string;
   fix: DepFix | null;
 }
+
+/** Idle auto-stop settings (§6.11): profile name -> idle limit in minutes. */
+export interface AutoStopSettings {
+  profiles: Record<string, number>;
+}
+
+/** Live idle state of one auto-stop profile (§6.11). */
+export interface AutoStopStatus {
+  profile: string;
+  minutes: number;
+  /** Seconds continuously idle; 0 when busy or stopped. */
+  idleSeconds: number;
+  /** Why the machine isn't idle ("containers", "kubernetes", "stopped"…), null when idle. */
+  busyReason: string | null;
+}
+
+/** Event `auto-stopped`. */
+export interface AutoStopped {
+  profile: string;
+  minutes: number;
+}

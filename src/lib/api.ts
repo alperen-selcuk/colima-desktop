@@ -2,6 +2,9 @@
 // command names, camelCase arg names, and event names (`colima-op-log`, `log-line`,
 // `log-end`, `profiles-changed`).
 import type {
+  AutoStopped,
+  AutoStopSettings,
+  AutoStopStatus,
   CatalogResponse,
   ComposeActionKind,
   ComposeInfo,
@@ -117,6 +120,7 @@ export async function listen<T>(
 // pages render without the Rust backend.
 // ---------------------------------------------------------------------------
 
+const mockAutoStop: AutoStopSettings = { profiles: { default: 15 } };
 let mockPfCounter = 0;
 const mockPortForwards: PortForward[] = [];
 
@@ -162,6 +166,21 @@ async function mockInvoke<T>(
       return undefined as unknown as T;
     case "busy_profiles":
       return [] as unknown as T;
+    case "autostop_settings":
+      return { profiles: { ...mockAutoStop.profiles } } as unknown as T;
+    case "set_autostop": {
+      const minutes = args?.minutes as number | null;
+      if (minutes == null) delete mockAutoStop.profiles[profile];
+      else mockAutoStop.profiles[profile] = minutes;
+      return { profiles: { ...mockAutoStop.profiles } } as unknown as T;
+    }
+    case "autostop_status":
+      return Object.entries(mockAutoStop.profiles).map(([name, minutes]) => ({
+        profile: name,
+        minutes,
+        idleSeconds: name === "default" ? 240 : 0,
+        busyReason: name === "default" ? null : "stopped",
+      })) as unknown as T;
     case "list_containers":
       return mock.mockContainers as unknown as T;
     case "compose_info":
@@ -506,6 +525,20 @@ export function kubernetesAction(
 
 export function busyProfiles(): Promise<string[]> {
   return invoke<string[]>("busy_profiles");
+}
+
+/** Idle auto-stop settings (§6.11). */
+export function autostopSettings(): Promise<AutoStopSettings> {
+  return invoke<AutoStopSettings>("autostop_settings");
+}
+
+/** Enable (`minutes` = 5/15/30/60) or disable (`null`) idle auto-stop for a profile. */
+export function setAutostop(profile: string, minutes: number | null): Promise<AutoStopSettings> {
+  return invoke<AutoStopSettings>("set_autostop", { profile, minutes });
+}
+
+export function autostopStatus(): Promise<AutoStopStatus[]> {
+  return invoke<AutoStopStatus[]>("autostop_status");
 }
 
 export function profileConfigRaw(profile: string): Promise<ProfileConfigRaw> {
@@ -927,6 +960,10 @@ export function onLogEnd(handler: (payload: LogEnd) => void): Promise<UnlistenFn
 
 export function onProfilesChanged(handler: () => void): Promise<UnlistenFn> {
   return listen<null>("profiles-changed", () => handler());
+}
+
+export function onAutoStopped(handler: (payload: AutoStopped) => void): Promise<UnlistenFn> {
+  return listen<AutoStopped>("auto-stopped", handler);
 }
 
 export function onTerminalOutput(handler: (payload: TerminalOutput) => void): Promise<UnlistenFn> {

@@ -22,6 +22,8 @@ pub struct AppState {
     pub kubeconfig: KubeconfigState,
     /// Per-profile cached compose plugin-vs-standalone resolution (§6.7).
     compose_mode: Mutex<HashMap<String, crate::compose::ComposeInfo>>,
+    /// Idle auto-stop bookkeeping (§6.11).
+    pub autostop: crate::autostop::AutoStopState,
 }
 
 /// 30s cache TTL for resolved docker sockets, per §2.2.

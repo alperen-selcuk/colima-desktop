@@ -91,6 +91,17 @@ function AppShell() {
     return () => unlisten?.();
   }, [queryClient]);
 
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    api.onAutoStopped(({ profile, minutes }) => {
+      toast.success(`${profile} auto-stopped`, `Idle for ${minutes} min; its memory is back to the system.`);
+      queryClient.invalidateQueries({ queryKey: ["autostopStatus"] });
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, [queryClient, toast]);
+
   const profiles = profilesQuery.data ?? [];
   const currentProfile = profiles.find((p) => p.name === selected);
   const busyProfiles = busyQuery.data ?? [];
