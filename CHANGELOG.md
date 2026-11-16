@@ -2,6 +2,13 @@
 
 All notable changes to Colima Desktop are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- `bench/colima-bench.sh`: reproducible Colima benchmark (cold start, `docker run` latency, idle cost, memory return
+  after load, bind-mount read, stop) on a dedicated profile; results summarised in the README.
+
 ## [0.2.6] - 2026-11-08
 
 ### Security

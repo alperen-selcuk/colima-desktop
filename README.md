@@ -29,6 +29,24 @@ curl -fsSL https://raw.githubusercontent.com/alperen-selcuk/colima-desktop/main/
 See [docs/INSTALL.md](docs/INSTALL.md) for manual downloads, uninstall instructions, and details
 (TR + EN).
 
+## Benchmark
+
+Colima itself, measured on an Apple M3 (24 GB, macOS 26) with colima 0.10.3, `vz` + `virtiofs`,
+2 CPUs / 8 GB. Colima Desktop adds no overhead to these paths; it calls the same `colima`/`docker` CLIs.
+Bu rakamlar Colima motorunun kendisine aittir; Colima Desktop aynı CLI'ları çağırdığı için ek yük getirmez.
+
+| Metric / Metrik | Result / Sonuç |
+|---|---|
+| `docker run --rm alpine true` (cached image, 20 runs) | 134 ms median · 150 ms p95 |
+| Cold start, stopped VM → Docker answers | ~11 s |
+| Idle VM memory / CPU | ~1.0 GB · 0.4% |
+| Memory returned to macOS after a 4 GB load, while running | none until stop |
+| `colima stop` (all VM memory returned) | ~2.5 s |
+| Bind-mount read, 1 GB file (virtiofs) | ~2.4 GB/s |
+
+Reproduce on your machine / kendi makinende tekrarla: `bench/colima-bench.sh` (uses its own `bench`
+profile, never touches other profiles or your docker/kube context; ~5 min, results in `bench/results/`).
+
 ## Türkçe
 
 Colima Desktop, [Colima](https://github.com/abiosoft/colima) (bir Docker Desktop alternatifi) için macOS ve
